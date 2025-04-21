@@ -1,36 +1,81 @@
-const User = require('/Users/admin/Desktop/rebel/src/models/User.js');
+const User = require('../../modules/user/userModel');
+const { accountService } = require('../../../dist/account-abstraction');
 const { sendTokenResponse } = require('../../utils/responseUtils');
 
-// Ce code temporaire fonctionne sans l'AA pour démarrer
 exports.magicAuth = async (req, res) => {
   try {
-    const { email, username } = req.body;
+    const { didToken, username } = req.body;
     
-    if (!email) {
+    if (!didToken) {
       return res.status(400).json({
         success: false,
-        message: 'Email required'
+        message: 'Magic token missing'
       });
     }
     
-    // Pour le test, on crée simplement un utilisateur
-    let user = await User.findOne({ email });
+    // Utiliser l'AA pour authentifier
+    const { user: aaUser, isNewUser } = await accountService.authenticateUser(didToken, username);
     
-    if (!user) {
-      user = new User({
-        username: username || email.split('@')[0],
-        email,
-        password: require('crypto').randomBytes(16).toString('hex')
+    // Vérifier si l'utilisateur existe dans la BD
+    let dbUser = await User.findOne({ email: aaUser.email });
+    
+    if (!dbUser) {
+      // Créer nouvel utilisateur
+      dbUser = new User({
+        username: aaUser.username,
+        email: aaUser.email,
+        password: require('crypto').randomBytes(16).toString('hex'), // Password requis par le modèle
+        solanaAddress: aaUser.publicKey,
+        magicIssuerId: aaUser.magicIssuer
       });
-      await user.save();
+      await dbUser.save();
+    } else {
+      // Mettre à jour infos Solana
+      dbUser.solanaAddress = aaUser.publicKey;
+      dbUser.magicIssuerId = aaUser.magicIssuer;
+      await dbUser.save();
     }
     
-    sendTokenResponse(user, 200, res);
+    // Créer et retourner le token JWT
+    sendTokenResponse(dbUser, isNewUser ? 201 : 200, res);
   } catch (error) {
-    console.error('Magic auth error:', error);
+    console.error('Error in Magic authentication:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error during authentication',
+      error: error.message
+    });
+  }
+};
+
+// Ajouter un endpoint pour récupérer l'adresse wallet
+exports.getWalletAddress = async (req, res) => {
+  try {
+    // Récupérer l'utilisateur depuis req.user (ajouté par middleware)
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        solanaAddress: user.solanaAddress || 'Not available',
+        // Récupérer le solde si disponible
+        balance: user.solanaAddress 
+          ? await accountService.getUserSolBalance(user.solanaAddress) 
+          : 0
+      }
+    });
+  } catch (error) {
+    console.error('Error retrieving wallet address:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while retrieving wallet info'
     });
   }
 };

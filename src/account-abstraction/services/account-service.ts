@@ -1,3 +1,4 @@
+import { SolanaService } from './solana-service';
 import { MagicAuthService } from './magic-auth-service';
 import { UserAccount, Transaction } from '../interfaces/types';
 import { SOLANA_CONFIG } from '../config';
@@ -5,8 +6,6 @@ import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Service principal pour l'Account Abstraction
- * Coordonne les interactions entre Magic.link et Solana
- * Gère les comptes utilisateurs et les transactions
  */
 export class AccountService {
   private solanaService: SolanaService;

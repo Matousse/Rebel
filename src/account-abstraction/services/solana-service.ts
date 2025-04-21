@@ -1,206 +1,162 @@
-import { SolanaService } from './solana-service';
-import { MagicAuthService } from './magic-auth-service';
-import { UserAccount, Transaction } from '../interfaces/types';
-import { SOLANA_CONFIG } from '../config';
-import { v4 as uuidv4 } from 'uuid';
-
-/**
- * Service principal pour l'Account Abstraction
- * Coordonne les interactions entre Magic.link et Solana
- * Gère les comptes utilisateurs et les transactions
- */
-export class AccountService {
-  private solanaService: SolanaService;
-  private magicAuthService: MagicAuthService;
-  private users: Map<string, UserAccount> = new Map();
-  private transactions: Map<string, Transaction> = new Map();
+import { 
+    Connection, 
+    Keypair, 
+    PublicKey, 
+    Transaction, 
+    sendAndConfirmTransaction,
+    SystemProgram,
+    LAMPORTS_PER_SOL
+  } from '@solana/web3.js';
+  import { SOLANA_CONFIG, getAdminKeypair } from '../config';
+  import { v4 as uuidv4 } from 'uuid';
   
-  constructor() {
-    this.solanaService = new SolanaService();
-    this.magicAuthService = new MagicAuthService();
-    
-    console.log("Service Account Abstraction initialisé");
+  // Définir le type Transaction localement pour éviter l'importation circulaire
+  interface AppTransaction {
+    id: string;
+    userId: string;
+    type: 'ACCOUNT_CREATION' | 'AUTHENTICATION' | 'CHALLENGE_PARTICIPATION';
+    status: 'PENDING' | 'COMPLETED' | 'FAILED';
+    timestamp: number;
+    signature?: string;
+    metadata?: Record<string, any>;
   }
   
   /**
-   * Authentifier un utilisateur via Magic.link et créer/récupérer son compte
+   * Service pour interagir avec la blockchain Solana
    */
-  async authenticateUser(didToken: string, username?: string): Promise<{
-    user: UserAccount;
-    isNewUser: boolean;
-    transaction: Transaction;
-  }> {
-    try {
-      // Valider le token
-      const isValid = await this.magicAuthService.validateToken(didToken);
-      if (!isValid) {
-        throw new Error("Token Magic invalide");
-      }
+  export class SolanaService {
+    private connection: Connection;
+    private adminKeypair: Keypair;
+    
+    constructor() {
+      // Initialiser la connexion au réseau Solana
+      this.connection = new Connection(SOLANA_CONFIG.endpoint, 'confirmed');
       
-      // Récupérer les métadonnées
-      const metadata = await this.magicAuthService.getUserMetadata(didToken);
+      // Charger le keypair admin
+      this.adminKeypair = getAdminKeypair();
       
-      // Vérifier si l'utilisateur existe déjà
-      const existingUser = Array.from(this.users.values()).find(
-        user => user.magicIssuer === metadata.issuer
-      );
+      console.log(`Solana service initialisé sur ${SOLANA_CONFIG.network}`);
+      console.log(`Admin wallet: ${this.adminKeypair.publicKey.toString()}`);
+    }
+    
+    /**
+     * Récupérer la connexion Solana
+     */
+    getConnection(): Connection {
+      return this.connection;
+    }
+    
+    /**
+     * Récupérer le keypair admin
+     */
+    getAdminKeypair(): Keypair {
+      return this.adminKeypair;
+    }
+    
+    /**
+     * Vérifier le solde SOL d'une adresse
+     */
+    async getSolBalance(address: string | PublicKey): Promise<number> {
+      const publicKey = typeof address === 'string' ? new PublicKey(address) : address;
+      const balance = await this.connection.getBalance(publicKey);
+      return balance / LAMPORTS_PER_SOL; // Convertir lamports en SOL
+    }
+    
+    /**
+     * Financer un nouveau compte utilisateur avec une petite quantité de SOL
+     */
+    async fundUserAccount(address: string | PublicKey): Promise<AppTransaction> {
+      const userPublicKey = typeof address === 'string' ? new PublicKey(address) : address;
       
-      let user: UserAccount;
-      let isNewUser = false;
-      
-      if (existingUser) {
-        // Utilisateur existant
-        user = existingUser;
-      } else {
-        // Nouvel utilisateur
-        user = await this.magicAuthService.createUserAccountFromMagic(didToken, username);
-        this.users.set(user.id, user);
-        isNewUser = true;
+      try {
+        // Créer la transaction pour transférer des SOL depuis le compte admin
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: this.adminKeypair.publicKey,
+            toPubkey: userPublicKey,
+            lamports: 0.01 * LAMPORTS_PER_SOL // 0.01 SOL suffisant pour quelques transactions
+          })
+        );
         
-        // Pour les nouveaux utilisateurs sur devnet/testnet, financer leur compte
-        if (['devnet', 'testnet'].includes(SOLANA_CONFIG.network)) {
-          try {
-            await this.solanaService.fundUserAccount(user.publicKey);
-          } catch (error) {
-            console.warn(`Impossible de financer le compte de ${user.username}:`, error);
-            // On continue même si le financement échoue
+        // Envoyer et confirmer la transaction
+        const signature = await sendAndConfirmTransaction(
+          this.connection,
+          transaction,
+          [this.adminKeypair]
+        );
+        
+        console.log(`Compte ${userPublicKey.toString()} financé avec 0.01 SOL: ${signature}`);
+        
+        // Retourner l'objet transaction
+        return {
+          id: uuidv4(),
+          userId: userPublicKey.toString(),
+          type: 'ACCOUNT_CREATION',
+          status: 'COMPLETED',
+          timestamp: Date.now(),
+          signature,
+          metadata: { amount: 0.01, network: SOLANA_CONFIG.network }
+        };
+      } catch (error) {
+        console.error(`Erreur lors du financement du compte ${userPublicKey.toString()}:`, error);
+        
+        return {
+          id: uuidv4(),
+          userId: userPublicKey.toString(),
+          type: 'ACCOUNT_CREATION',
+          status: 'FAILED',
+          timestamp: Date.now(),
+          metadata: { 
+            error: (error as Error).message,
+            network: SOLANA_CONFIG.network
           }
-        }
+        };
       }
-      
-      // Enregistrer la transaction d'authentification
-      const transaction: Transaction = {
-        id: `tx_${uuidv4()}`,
-        userId: user.id,
-        type: isNewUser ? 'ACCOUNT_CREATION' : 'AUTHENTICATION',
-        status: 'COMPLETED',
-        timestamp: Date.now(),
-        metadata: {
-          email: user.email,
-          network: SOLANA_CONFIG.network,
-          isNewUser
-        }
-      };
-      
-      this.transactions.set(transaction.id, transaction);
-      
-      return { user, isNewUser, transaction };
-    } catch (error) {
-      console.error("Erreur lors de l'authentification:", error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Récupérer un utilisateur par ID
-   */
-  getUserById(userId: string): UserAccount | undefined {
-    return this.users.get(userId);
-  }
-  
-  /**
-   * Récupérer un utilisateur par email
-   */
-  getUserByEmail(email: string): UserAccount | undefined {
-    return Array.from(this.users.values()).find(
-      user => user.email === email
-    );
-  }
-  
-  /**
-   * Récupérer un utilisateur par son Magic issuer
-   */
-  getUserByMagicIssuer(issuer: string): UserAccount | undefined {
-    return Array.from(this.users.values()).find(
-      user => user.magicIssuer === issuer
-    );
-  }
-  
-  /**
-   * Mettre à jour les informations d'un utilisateur
-   */
-  updateUser(userId: string, updates: Partial<Omit<UserAccount, 'id' | 'publicKey' | 'magicIssuer'>>): UserAccount {
-    const user = this.users.get(userId);
-    if (!user) {
-      throw new Error("Utilisateur non trouvé");
     }
     
-    // Appliquer les mises à jour
-    const updatedUser: UserAccount = {
-      ...user,
-      ...updates
-    };
-    
-    this.users.set(userId, updatedUser);
-    return updatedUser;
-  }
-  
-  /**
-   * Enregistrer la participation d'un utilisateur à un challenge
-   */
-  async participateInChallenge(userId: string, challengeId: string): Promise<Transaction> {
-    const user = this.users.get(userId);
-    if (!user) {
-      throw new Error("Utilisateur non trouvé");
+    /**
+     * Créer et soumettre une transaction sponsorisée
+     */
+    async submitSponsoredTransaction(
+      transaction: Transaction,
+      userSignature: Buffer,
+      userPublicKey: PublicKey
+    ): Promise<string> {
+      try {
+        // Ajouter les informations nécessaires à la transaction
+        transaction.feePayer = this.adminKeypair.publicKey;
+        const { blockhash } = await this.connection.getRecentBlockhash();
+        transaction.recentBlockhash = blockhash;
+        
+        // Ajouter la signature de l'utilisateur
+        transaction.addSignature(userPublicKey, userSignature);
+        
+        // L'admin signe la transaction (pour payer les frais)
+        transaction.sign(this.adminKeypair);
+        
+        // Envoyer la transaction
+        const signature = await this.connection.sendRawTransaction(transaction.serialize());
+        
+        // Attendre la confirmation
+        await this.connection.confirmTransaction(signature);
+        
+        return signature;
+      } catch (error) {
+        console.error("Erreur lors de la soumission de la transaction sponsorisée:", error);
+        throw error;
+      }
     }
     
-    // Créer la transaction
-    const transaction: Transaction = {
-      id: `tx_${uuidv4()}`,
-      userId,
-      type: 'CHALLENGE_PARTICIPATION',
-      status: 'COMPLETED',
-      timestamp: Date.now(),
-      metadata: { challengeId }
-    };
-    
-    this.transactions.set(transaction.id, transaction);
-    
-    return transaction;
-  }
-  
-  /**
-   * Récupérer l'historique des transactions d'un utilisateur
-   */
-  getUserTransactions(userId: string): Transaction[] {
-    return Array.from(this.transactions.values())
-      .filter(tx => tx.userId === userId)
-      .sort((a, b) => b.timestamp - a.timestamp); // Du plus récent au plus ancien
-  }
-  
-  /**
-   * Récupérer une transaction par ID
-   */
-  getTransactionById(transactionId: string): Transaction | undefined {
-    return this.transactions.get(transactionId);
-  }
-  
-  /**
-   * Déconnecter un utilisateur
-   */
-  async logoutUser(userId: string): Promise<boolean> {
-    const user = this.users.get(userId);
-    if (!user || !user.magicIssuer) {
-      return false;
-    }
-    
-    try {
-      return await this.magicAuthService.logoutUser(user.magicIssuer);
-    } catch (error) {
-      console.error("Erreur lors de la déconnexion:", error);
-      return false;
+    /**
+     * Vérifier si une transaction existe et a été confirmée
+     */
+    async verifyTransaction(signature: string): Promise<boolean> {
+      try {
+        const { value } = await this.connection.getSignatureStatus(signature);
+        return value !== null && value.confirmationStatus === 'confirmed';
+      } catch (error) {
+        console.error("Erreur lors de la vérification de la transaction:", error);
+        return false;
+      }
     }
   }
-  
-  /**
-   * Récupérer le solde SOL d'un utilisateur
-   */
-  async getUserSolBalance(userId: string): Promise<number> {
-    const user = this.users.get(userId);
-    if (!user) {
-      throw new Error("Utilisateur non trouvé");
-    }
-    
-    return await this.solanaService.getSolBalance(user.publicKey);
-  }
-}

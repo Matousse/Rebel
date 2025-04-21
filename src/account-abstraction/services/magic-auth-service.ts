@@ -1,11 +1,10 @@
-import { Magic } from '@magic-sdk/admin';
+import { Magic, MagicUserMetadata } from '@magic-sdk/admin';
 import { v4 as uuidv4 } from 'uuid';
 import { UserAccount } from '../interfaces/types';
 import { MAGIC_CONFIG } from '../config';
 
 /**
  * Service pour gérer l'authentification via Magic.link
- * Offre les fonctionnalités pour vérifier les tokens et extraire les données utilisateur
  */
 export class MagicAuthService {
   private magic: Magic;
@@ -42,11 +41,13 @@ export class MagicAuthService {
   }> {
     try {
       const metadata = await this.magic.users.getMetadataByToken(didToken);
-      // Assurez-vous que issuer n'est pas null
+      
+      // Vérifier que l'issuer existe et le transformer en string non-null
       if (!metadata.issuer) {
-        throw new Error("Magic issuer is null");
+        throw new Error("Issuer manquant dans les métadonnées Magic");
       }
       
+      // Retourner un objet propre avec les types corrects
       return {
         issuer: metadata.issuer,
         email: metadata.email || undefined,
