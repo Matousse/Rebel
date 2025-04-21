@@ -52,4 +52,16 @@ app.use((req, res) => {
   });
 });
 
+// Ajouter les routes d'authentification Magic
+app.use('/api/auth', authRoutes);
+
+// Si vous avez besoin de tester le service AA, vous pouvez ajouter une route de diagnostic
+app.get('/api/aa-status', (req, res) => {
+  res.json({
+    status: 'ok',
+    solanaNetwork: process.env.SOLANA_NETWORK || 'devnet',
+    adminWallet: accountService.getUserById ? 'Chargé' : 'Non initialisé'
+  });
+});
+
 module.exports = app;
