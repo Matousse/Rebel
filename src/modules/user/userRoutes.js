@@ -58,10 +58,9 @@ router.post(
 );
 
 router.post('/login', loginUser);
-router.get('/:id', getUserById);
-router.get('/:id/likes', getUserLikes);
 
 // Private routes (require authentication)
+// Note: Specific routes must come before parameterized routes
 router.get('/profile', protect, getUserProfile);
 router.put('/profile', protect, upload.single('profilePicture'), updateUserProfile);
 
@@ -72,5 +71,9 @@ router.delete('/follow/:userId', protect, unfollowUser);
 // Routes for likes
 router.post('/likes/:trackId', protect, likeTrack);
 router.delete('/likes/:trackId', protect, unlikeTrack);
+
+// Parameterized routes - these must come after specific routes to avoid conflicts
+router.get('/:id', getUserById);
+router.get('/:id/likes', getUserLikes);
 
 module.exports = router;

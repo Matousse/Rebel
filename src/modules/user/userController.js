@@ -289,16 +289,9 @@ exports.unfollowUser = async (req, res) => {
 // @access  Private
 exports.likeTrack = async (req, res) => {
   try {
-    // Check if track exists (assuming a Track model exists)
-    // const track = await Track.findById(req.params.trackId);
-    // 
-    // if (!track) {
-    //   return res.status(404).json({
-    //     success: false,
-    //     message: 'Track not found'
-    //   });
-    // }
-
+    // Note: We're skipping track validation for now since the Track model might not be fully set up
+    // In a production environment, you would want to verify the track exists first
+    
     // Add track to user's favorites
     await req.user.likeTrack(req.params.trackId);
 
@@ -341,7 +334,8 @@ exports.unlikeTrack = async (req, res) => {
 // @access  Public
 exports.getUserLikes = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).populate('likedTracks');
+    // First find the user without populating
+    const user = await User.findById(req.params.id);
 
     if (!user) {
       return res.status(404).json({
@@ -350,11 +344,25 @@ exports.getUserLikes = async (req, res) => {
       });
     }
 
-    res.status(200).json({
-      success: true,
-      count: user.likedTracks.length,
-      data: user.likedTracks
-    });
+    // Try to populate tracks if possible
+    try {
+      const populatedUser = await User.findById(req.params.id).populate('likedTracks');
+      
+      return res.status(200).json({
+        success: true,
+        count: populatedUser.likedTracks.length,
+        data: populatedUser.likedTracks
+      });
+    } catch (populateError) {
+      // If population fails, just return the track IDs
+      console.error('Error populating tracks:', populateError);
+      return res.status(200).json({
+        success: true,
+        count: user.likedTracks.length,
+        data: user.likedTracks,
+        note: 'Only track IDs available, full track details could not be populated'
+      });
+    }
   } catch (error) {
     console.error('Error retrieving favorites:', error);
     res.status(500).json({

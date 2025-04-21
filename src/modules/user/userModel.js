@@ -39,10 +39,6 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  isArtist: {
-    type: Boolean,
-    default: false
-  },
   website: {
     type: String,
     default: ''
@@ -59,10 +55,6 @@ const UserSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Track'
   }],
-  tracksCount: {
-    type: Number,
-    default: 0
-  },
   resetPasswordToken: String,
   resetPasswordExpire: Date
 }, {
