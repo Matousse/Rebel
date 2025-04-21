@@ -41,22 +41,6 @@ const TrackSchema = new mongoose.Schema({
     default: true
   },
   tags: [String],
-  comments: [
-    {
-      user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-      },
-      text: {
-        type: String,
-        required: true
-      },
-      date: {
-        type: Date,
-        default: Date.now
-      }
-    }
-  ]
 }, {
   timestamps: true
 });
