@@ -41,7 +41,17 @@ export class MagicAuthService {
     publicAddress?: string;
   }> {
     try {
-      return await this.magic.users.getMetadataByToken(didToken);
+      const metadata = await this.magic.users.getMetadataByToken(didToken);
+      // Assurez-vous que issuer n'est pas null
+      if (!metadata.issuer) {
+        throw new Error("Magic issuer is null");
+      }
+      
+      return {
+        issuer: metadata.issuer,
+        email: metadata.email || undefined,
+        publicAddress: metadata.publicAddress || undefined
+      };
     } catch (error) {
       console.error("Erreur lors de la récupération des métadonnées:", error);
       throw error;

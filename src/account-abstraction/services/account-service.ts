@@ -1,4 +1,3 @@
-import { SolanaService } from './solana-service';
 import { MagicAuthService } from './magic-auth-service';
 import { UserAccount, Transaction } from '../interfaces/types';
 import { SOLANA_CONFIG } from '../config';

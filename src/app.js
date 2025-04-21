@@ -13,6 +13,7 @@ const Track = require('./models/Track');
 
 // Import module routes
 const userRoutes = require('./modules/user/userRoutes');
+const magicRoutes = require('./modules/magic/magicRoutes'); // Ajout des routes Magic
 
 // Initialize Express application
 const app = express();
@@ -28,11 +29,22 @@ app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
 // Routes
 app.use('/api/users', userRoutes);
+app.use('/api/magic', magicRoutes); // Utilisation des routes Magic
 
 // Root route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to the music platform API' });
 });
+
+// Ajout d'une route de test pour l'AA
+// app.get('/api/aa-status', (req, res) => {
+//   const { accountService } = require('./account-abstraction');
+//   res.json({
+//     status: 'ok',
+//     solanaNetwork: process.env.SOLANA_NETWORK || 'devnet',
+//     adminPublicKey: accountService.solanaService.getAdminKeypair().publicKey.toString()
+//   });
+// });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -49,18 +61,6 @@ app.use((req, res) => {
   res.status(404).json({
     success: false,
     error: 'Route not found'
-  });
-});
-
-// Ajouter les routes d'authentification Magic
-app.use('/api/auth', authRoutes);
-
-// Si vous avez besoin de tester le service AA, vous pouvez ajouter une route de diagnostic
-app.get('/api/aa-status', (req, res) => {
-  res.json({
-    status: 'ok',
-    solanaNetwork: process.env.SOLANA_NETWORK || 'devnet',
-    adminWallet: accountService.getUserById ? 'Chargé' : 'Non initialisé'
   });
 });
 
