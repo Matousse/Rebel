@@ -14,7 +14,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Configuration
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'http://localhost:5001/api';
 const MAGIC_SECRET_KEY = process.env.MAGIC_SECRET_KEY;
 
 // Créer une instance Magic.link Admin
@@ -40,8 +40,32 @@ async function testMagicAuth() {
     
     // 2. Obtenir les métadonnées utilisateur pour afficher les infos
     try {
-      const metadata = await magic.users.getMetadataByToken(TEST_DID_TOKEN);
-      console.log('✅ Métadonnées récupérées:');
-      console.log(`   - Email: ${metadata.email}`);
-      console.log(`   - Solana Public Key: ${metadata.publicAddress}`);
-    } catch (error)
+        const metadata = await magic.users.getMetadataByToken(TEST_DID_TOKEN);
+        console.log('✅ Métadonnées récupérées:');
+        console.log(`   - Email: ${metadata.email}`);
+        console.log(`   - Public Address: ${metadata.publicAddress}`);
+      } catch (error) {
+        console.error('❌ Erreur lors de la récupération des métadonnées:', error.message);
+        return;
+      }
+  
+      // 3. Envoyer le token au backend pour simuler une requête authentifiée
+      try {
+        const response = await axios.get(`${API_URL}/user`, {
+          headers: {
+            Authorization: `Bearer ${TEST_DID_TOKEN}`,
+          },
+        });
+  
+        console.log('✅ Réponse du serveur :', response.data);
+      } catch (error) {
+        console.error('❌ Erreur lors de l’appel au backend:', error.message);
+      }
+  
+    } catch (err) {
+      console.error('❌ Erreur générale:', err.message);
+    }
+  }
+  
+  testMagicAuth();
+  

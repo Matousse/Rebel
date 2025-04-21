@@ -1,4 +1,4 @@
-const User = require('../../models/User');
+const User = require('/Users/admin/Desktop/rebel/src/models/User.js');
 const { sendTokenResponse } = require('../../utils/responseUtils');
 
 // Ce code temporaire fonctionne sans l'AA pour démarrer

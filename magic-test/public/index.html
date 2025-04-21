@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Magic Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/magic-sdk/dist/magic.js"></script>
+  </head>
+  <body>
+    <h1>Magic Link Test</h1>
+    <input type="email" id="email" placeholder="Entrez votre email" />
+    <button onclick="login()">Se connecter</button>
+
+    <script>
+      const magic = new Magic("pk_live_DAE97419AE6EBC48");
+
+      async function login() {
+        const email = document.getElementById("email").value;
+        await magic.auth.loginWithMagicLink({ email });
+
+        const didToken = await magic.user.getIdToken();
+        console.log("✅ DID Token :", didToken);
+
+        alert("DID Token copié dans la console !");
+      }
+    </script>
+  </body>
+</html>

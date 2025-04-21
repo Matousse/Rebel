@@ -36,15 +36,15 @@ app.get('/', (req, res) => {
   res.json({ message: 'Welcome to the music platform API' });
 });
 
-// Ajout d'une route de test pour l'AA
-// app.get('/api/aa-status', (req, res) => {
-//   const { accountService } = require('./account-abstraction');
-//   res.json({
-//     status: 'ok',
-//     solanaNetwork: process.env.SOLANA_NETWORK || 'devnet',
-//     adminPublicKey: accountService.solanaService.getAdminKeypair().publicKey.toString()
-//   });
-// });
+//Ajout d'une route de test pour l'AA
+app.get('/api/aa-status', (req, res) => {
+  const { accountService } = require('./account-abstraction');
+  res.json({
+    status: 'ok',
+    solanaNetwork: process.env.SOLANA_NETWORK || 'devnet',
+    adminPublicKey: accountService.solanaService.getAdminKeypair().publicKey.toString()
+  });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
