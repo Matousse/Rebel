@@ -14,6 +14,7 @@ const Track = require('./models/Track');
 // Import module routes
 const userRoutes = require('./modules/user/userRoutes');
 const magicRoutes = require('./modules/magic/magicRoutes'); // Ajout des routes Magic
+const playRoutes = require('./modules/play/playRoutes'); // Ajout des routes Play
 
 // Initialize Express application
 const app = express();
@@ -22,14 +23,35 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cors());
-app.use(helmet()); // HTTP Security
+
+// Configuration de Helmet avec des options personnalisées pour permettre les scripts externes
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://w.soundcloud.com", "https://*.sndcdn.com"],
+      connectSrc: ["'self'", "https://api.soundcloud.com", "https://api-widget.soundcloud.com", "https://*.sndcdn.com"],
+      frameSrc: ["'self'", "https://w.soundcloud.com", "https://*.sndcdn.com"],
+      mediaSrc: ["'self'", "https://api.soundcloud.com", "https://api-widget.soundcloud.com", "https://*.sndcdn.com"],
+      imgSrc: ["'self'", "https://w.soundcloud.com", "https://i1.sndcdn.com", "https://*.sndcdn.com", "data:"],
+    },
+  },
+  // Désactiver les politiques qui bloquent les scripts externes
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false
+})); // HTTP Security avec CSP personnalisée
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
+// Serve Play module static files
+app.use('/play', express.static(path.join(__dirname, 'modules/play')));
+
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/magic', magicRoutes); // Utilisation des routes Magic
+app.use('/api/play', playRoutes); // Utilisation des routes Play
 
 // Root route
 app.get('/', (req, res) => {

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test du Widget SoundCloud</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    
+    h1 {
+      color: #ff5500;
+      text-align: center;
+    }
+    
+    .player-container {
+      margin: 20px 0;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      background-color: white;
+      padding: 20px;
+    }
+    
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    
+    button {
+      background-color: #ff5500;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    
+    button:hover {
+      background-color: #ff7700;
+    }
+    
+    .logs {
+      background-color: #333;
+      color: #fff;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: monospace;
+      height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+    
+    .log-entry {
+      margin: 5px 0;
+      border-bottom: 1px solid #555;
+      padding-bottom: 5px;
+    }
+    
+    .log-entry.error {
+      color: #ff5555;
+    }
+    
+    .log-entry.info {
+      color: #55ff55;
+    }
+    
+    .log-entry.warn {
+      color: #ffff55;
+    }
+  </style>
+</head>
+<body>
+  <h1>Test du Widget SoundCloud</h1>
+  
+  <div class="player-container">
+    <h2>Widget SoundCloud</h2>
+    <div id="soundcloud-player"></div>
+  </div>
+  
+  <div class="controls">
+    <button id="play-btn">Lecture</button>
+    <button id="pause-btn">Pause</button>
+    <button id="random-btn">Morceau Aléatoire</button>
+  </div>
+  
+  <div class="player-container">
+    <h2>Logs de débogage</h2>
+    <div class="logs" id="logs"></div>
+  </div>
+  
+  <!-- Charger le script du widget -->
+  <script src="https://w.soundcloud.com/player/api.js" crossorigin="anonymous"></script>
+  
+  <script>
+    // Rediriger les logs console vers notre affichage
+    const logContainer = document.getElementById('logs');
+    
+    // Sauvegarder les méthodes console originales
+    const originalConsole = {
+      log: console.log,
+      error: console.error,
+      warn: console.warn,
+      info: console.info
+    };
+    
+    // Fonction pour ajouter un log à notre affichage
+    function addLogToDisplay(message, type = 'log') {
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      
+      // Formater le message
+      let formattedMessage = message;
+      if (typeof message === 'object') {
+        try {
+          formattedMessage = JSON.stringify(message);
+        } catch (e) {
+          formattedMessage = message.toString();
+        }
+      }
+      
+      const timestamp = new Date().toLocaleTimeString();
+      logEntry.textContent = `[${timestamp}] ${formattedMessage}`;
+      
+      logContainer.appendChild(logEntry);
+      logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll
+    }
+    
+    // Remplacer les méthodes console
+    console.log = function(...args) {
+      originalConsole.log(...args);
+      args.forEach(arg => addLogToDisplay(arg, 'log'));
+    };
+    
+    console.error = function(...args) {
+      originalConsole.error(...args);
+      args.forEach(arg => addLogToDisplay(arg, 'error'));
+    };
+    
+    console.warn = function(...args) {
+      originalConsole.warn(...args);
+      args.forEach(arg => addLogToDisplay(arg, 'warn'));
+    };
+    
+    console.info = function(...args) {
+      originalConsole.info(...args);
+      args.forEach(arg => addLogToDisplay(arg, 'info'));
+    };
+    
+    // Liste des morceaux SoundCloud
+    const tracks = [
+      'https://soundcloud.com/flume/say-it-feat-tove-lo',
+      'https://soundcloud.com/majorlazer/major-lazer-dj-snake-lean-on-feat-mo',
+      'https://soundcloud.com/theweeknd/the-weeknd-kendrick-lamar-pray-for-me',
+      'https://soundcloud.com/tameimpala/the-less-i-know-the-better',
+      'https://soundcloud.com/daftpunkofficialmusic/get-lucky-radio-edit-feat',
+      'https://soundcloud.com/disclosure/latch-feat-sam-smith',
+      'https://soundcloud.com/arcticmonkeys/do-i-wanna-know',
+      'https://soundcloud.com/thexx/on-hold',
+      'https://soundcloud.com/kaytranada/kaytranada-got-it-good-feat-craig-david',
+      'https://soundcloud.com/gorillaz/feel-good-inc'
+    ];
+    
+    let currentTrackIndex = 0;
+    let widget = null;
+    
+    // Fonction pour initialiser le widget SoundCloud
+    function initWidget() {
+      console.log('Initialisation du widget SoundCloud...');
+      
+      // Vérifier que l'API SoundCloud est chargée
+      if (typeof SC === 'undefined') {
+        console.error('L\'API SoundCloud (SC) n\'est pas chargée. Tentative de rechargement...');
+        // Insérer le script manuellement
+        const script = document.createElement('script');
+        script.src = 'https://w.soundcloud.com/player/api.js';
+        script.crossOrigin = 'anonymous';
+        script.onload = function() {
+          console.log('API SoundCloud chargée avec succès');
+          continueInitWidget();
+        };
+        script.onerror = function(error) {
+          console.error('Impossible de charger l\'API SoundCloud:', error);
+        };
+        document.head.appendChild(script);
+        return;
+      }
+      
+      continueInitWidget();
+    }
+    
+    // Suite de l'initialisation après chargement de l'API
+    function continueInitWidget() {
+      // Créer l'iframe
+      const container = document.getElementById('soundcloud-player');
+      const iframe = document.createElement('iframe');
+      iframe.id = 'sc-widget';
+      iframe.src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(tracks[currentTrackIndex])}&color=%23ff5500&auto_play=false&hide_related=false&show_comments=false&show_user=true&show_reposts=false&show_teaser=true&visual=true`;
+      iframe.width = '100%';
+      iframe.height = '166';
+      iframe.scrolling = 'no';
+      iframe.frameBorder = 'no';
+      iframe.allow = 'autoplay';
+      
+      // Vider le conteneur et ajouter l'iframe
+      container.innerHTML = '';
+      container.appendChild(iframe);
+      
+      // Attendre un peu pour s'assurer que l'iframe est chargée
+      setTimeout(() => {
+        try {
+          // Initialiser le widget SoundCloud
+          if (typeof SC !== 'undefined') {
+            widget = SC.Widget(iframe);
+            console.log('Widget créé avec succès');
+            
+            // Ajouter les écouteurs d'événements après l'initialisation
+            widget.bind(SC.Widget.Events.READY, () => {
+              console.log('Widget prêt');
+            });
+            
+            widget.bind(SC.Widget.Events.PLAY, () => {
+              console.log('Lecture démarrée');
+            });
+            
+            widget.bind(SC.Widget.Events.PAUSE, () => {
+              console.log('Lecture en pause');
+            });
+            
+            widget.bind(SC.Widget.Events.FINISH, () => {
+              console.log('Morceau terminé');
+              nextTrack();
+            });
+            
+            widget.bind(SC.Widget.Events.ERROR, (error) => {
+              console.error('Erreur du widget:', error);
+            });
+          } else {
+            console.error('SC n\'est toujours pas défini après le chargement du script');
+          }
+        } catch (error) {
+          console.error('Erreur lors de l\'initialisation du widget:', error);
+        }
+      }, 500);
+      
+      console.log('Widget initialisé avec succès');
+    }
+    
+    // Fonction pour passer au morceau suivant
+    function nextTrack() {
+      currentTrackIndex = (currentTrackIndex + 1) % tracks.length;
+      console.log(`Chargement du morceau: ${tracks[currentTrackIndex]}`);
+      widget.load(tracks[currentTrackIndex], {
+        auto_play: true
+      });
+    }
+    
+    // Fonction pour charger un morceau aléatoire
+    function loadRandomTrack() {
+      const randomIndex = Math.floor(Math.random() * tracks.length);
+      currentTrackIndex = randomIndex;
+      console.log(`Chargement du morceau aléatoire: ${tracks[currentTrackIndex]}`);
+      widget.load(tracks[currentTrackIndex], {
+        auto_play: true
+      });
+    }
+    
+    // Initialiser le widget quand la page est chargée
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('Page chargée');
+      
+      // Initialiser le widget
+      initWidget();
+      
+      // Ajouter les écouteurs d'événements pour les boutons
+      document.getElementById('play-btn').addEventListener('click', () => {
+        console.log('Bouton Lecture cliqué');
+        if (widget) widget.play();
+        else console.error('Widget non initialisé');
+      });
+      
+      document.getElementById('pause-btn').addEventListener('click', () => {
+        console.log('Bouton Pause cliqué');
+        if (widget) widget.pause();
+        else console.error('Widget non initialisé');
+      });
+      
+      document.getElementById('random-btn').addEventListener('click', () => {
+        console.log('Bouton Morceau Aléatoire cliqué');
+        if (widget) loadRandomTrack();
+        else console.error('Widget non initialisé');
+      });
+      
+      // Tester l'API
+      fetch('http://localhost:5001/api/play/tracks')
+        .then(response => response.json())
+        .then(data => {
+          console.info('API tracks response:', data);
+        })
+        .catch(error => {
+          console.error('Erreur lors de la requête API tracks:', error);
+        });
+    });
+  </script>
+</body>
+</html>
