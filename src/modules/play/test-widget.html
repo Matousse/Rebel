@@ -97,8 +97,8 @@
     <div class="logs" id="logs"></div>
   </div>
   
-  <!-- Charger le script du widget -->
-  <script src="https://w.soundcloud.com/player/api.js" crossorigin="anonymous"></script>
+  <!-- Charger le script SoundCloud le plus tôt possible -->
+  <script id="sc-widget-api" src="https://w.soundcloud.com/player/api.js"></script>
   
   <script>
     // Rediriger les logs console vers notre affichage
@@ -172,28 +172,35 @@
     let currentTrackIndex = 0;
     let widget = null;
     
-    // Fonction pour initialiser le widget SoundCloud
+    // Fonction pour initialiser le widget SoundCloud avec retry limité
+    let scInitTries = 0;
     function initWidget() {
       console.log('Initialisation du widget SoundCloud...');
-      
-      // Vérifier que l'API SoundCloud est chargée
       if (typeof SC === 'undefined') {
-        console.error('L\'API SoundCloud (SC) n\'est pas chargée. Tentative de rechargement...');
-        // Insérer le script manuellement
-        const script = document.createElement('script');
-        script.src = 'https://w.soundcloud.com/player/api.js';
-        script.crossOrigin = 'anonymous';
-        script.onload = function() {
-          console.log('API SoundCloud chargée avec succès');
-          continueInitWidget();
-        };
-        script.onerror = function(error) {
-          console.error('Impossible de charger l\'API SoundCloud:', error);
-        };
-        document.head.appendChild(script);
+        scInitTries++;
+        if (scInitTries > 5) {
+          console.error("API SoundCloud toujours indisponible après plusieurs tentatives.");
+          return;
+        }
+        // Vérifier si le script existe déjà
+        if (!document.getElementById('sc-widget-api')) {
+          const script = document.createElement('script');
+          script.id = 'sc-widget-api';
+          script.src = 'https://w.soundcloud.com/player/api.js';
+          script.onload = function() {
+            console.log('API SoundCloud chargée via insertion dynamique');
+            setTimeout(initWidget, 200); // Retry après chargement
+          };
+          script.onerror = function(error) {
+            console.error("Impossible de charger l'API SoundCloud:", error);
+          };
+          document.head.appendChild(script);
+        } else {
+          // Le script existe, attendre qu'il soit chargé
+          setTimeout(initWidget, 300);
+        }
         return;
       }
-      
       continueInitWidget();
     }
     
@@ -284,19 +291,28 @@
       document.getElementById('play-btn').addEventListener('click', () => {
         console.log('Bouton Lecture cliqué');
         if (widget) widget.play();
-        else console.error('Widget non initialisé');
+        else {
+          console.warn('Widget non initialisé, tentative de réinitialisation...');
+          initWidget();
+        }
       });
       
       document.getElementById('pause-btn').addEventListener('click', () => {
         console.log('Bouton Pause cliqué');
         if (widget) widget.pause();
-        else console.error('Widget non initialisé');
+        else {
+          console.warn('Widget non initialisé, tentative de réinitialisation...');
+          initWidget();
+        }
       });
       
       document.getElementById('random-btn').addEventListener('click', () => {
         console.log('Bouton Morceau Aléatoire cliqué');
         if (widget) loadRandomTrack();
-        else console.error('Widget non initialisé');
+        else {
+          console.warn('Widget non initialisé, tentative de réinitialisation...');
+          initWidget();
+        }
       });
       
       // Tester l'API
