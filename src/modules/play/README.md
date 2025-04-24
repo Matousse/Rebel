@@ -2,6 +2,12 @@
 
 Ce module permet d'intégrer facilement un widget SoundCloud dans votre application, avec la possibilité de lire des morceaux aléatoires.
 
+Pour y accéder et tester lorsque le server run : http://localhost:5001/play/test-widget.html
+
+
+
+
+
 ## Structure du module
 
 - `playController.js` - Contrôleur qui gère la logique côté serveur
