@@ -162,45 +162,43 @@ export class SolanaService {
   }
 
   /**
-   * Créer une transaction mémo pour stocker des données sur la blockchain
-   */
-  async createMemoTransaction(
-    address: string | PublicKey,
-    memoText: string
-  ): Promise<{ signature: string }> {
-    try {
-      const publicKey = typeof address === 'string' ? new PublicKey(address) : address;
-      
-      // Importer dynamiquement le programme de mémo
-      // Il faudra d'abord l'installer avec npm install @solana/spl-memo
-      const { default: { MemoProgram } } = await import('@solana/spl-memo');
-      
-      // Créer l'instruction de mémo
-      const instruction = new TransactionInstruction({
-        keys: [{ pubkey: publicKey, isSigner: false, isWritable: false }],
-        programId: new PublicKey(MemoProgram.programId),
-        data: Buffer.from(memoText, 'utf8')
-      });
-      
-      // Créer la transaction
-      const transaction = new Transaction().add(instruction);
-      
-      // Configurer la transaction
-      transaction.feePayer = this.adminKeypair.publicKey;
-      const { blockhash } = await this.connection.getRecentBlockhash();
-      transaction.recentBlockhash = blockhash;
-      
-      // Signer et envoyer la transaction
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [this.adminKeypair]
-      );
-      
-      return { signature };
-    } catch (error) {
-      console.error("Erreur lors de la création de la transaction mémo:", error);
-      throw error;
-    }
+ * Créer une transaction mémo pour stocker des données sur la blockchain
+ */
+async createMemoTransaction(
+  address: string | PublicKey,
+  memoText: string
+): Promise<{ signature: string }> {
+  try {
+    const publicKey = typeof address === 'string' ? new PublicKey(address) : address;
+    
+    // Importer directement les fonctions et constantes nécessaires
+    const MemoModule = await import('@solana/spl-memo');
+    
+    // Créer l'instruction de mémo
+    const instruction = new TransactionInstruction({
+      keys: [{ pubkey: publicKey, isSigner: false, isWritable: false }],
+      programId: MemoModule.MEMO_PROGRAM_ID,
+      data: Buffer.from(memoText, 'utf8')
+    });
+    
+    // Créer la transaction
+    const transaction = new Transaction().add(instruction);
+    
+    // Configurer la transaction
+    transaction.feePayer = this.adminKeypair.publicKey;
+    const { blockhash } = await this.connection.getRecentBlockhash();
+    transaction.recentBlockhash = blockhash;
+    
+    // Signer et envoyer la transaction
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      transaction,
+      [this.adminKeypair]
+    );
+    
+    return { signature };
+  } catch (error) {
+    console.error("Erreur lors de la création de la transaction mémo:", error);
+    throw error;
   }
-}
+}}

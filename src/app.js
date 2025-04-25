@@ -6,7 +6,8 @@ const helmet = require('helmet');
 
 // Load environment variables
 dotenv.config();
-
+// Initialize Express application
+const app = express();
 // Import Track model to ensure it's registered with Mongoose
 // Note: Don't import User model here as it's already imported elsewhere
 const Track = require('./models/Track');
@@ -18,8 +19,7 @@ const magicRoutes = require('./modules/magic/magicRoutes'); // Ajout des routes 
 const trackRoutes = require('./modules/tracks/trackRoutes'); //ajout route tracks
 app.use('/api/tracks', trackRoutes);
 
-// Initialize Express application
-const app = express();
+
 
 // Middleware
 app.use(express.json());

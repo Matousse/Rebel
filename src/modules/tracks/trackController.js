@@ -1,6 +1,6 @@
 const Track = require('../../models/Track');
 const User = require('../../modules/user/userModel');
-const { accountService } = require('../../account-abstraction');
+const { accountService } = require('../../../dist/account-abstraction');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');

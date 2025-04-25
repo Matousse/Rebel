@@ -2,7 +2,7 @@ import * as anchor from '@coral-xyz/anchor';
 import { Program } from '@coral-xyz/anchor';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { IDL } from './idl';
-import idl from '../../../../programs/timestamp_proof/timestamp_proof.json';
+import idl from './timestamp_proof.json';
 import { ProofOfCreationAccount, TimestampProof } from './types';
 import { SOLANA_CONFIG } from '../../account-abstraction/config';
 
@@ -37,10 +37,10 @@ export class TimestampProofClient {
     
     // Initialiser le programme
     this.program = new Program(
-        IDL as unknown as anchor.Idl,
-        PROGRAM_ID,
-        this.provider
-      );
+      IDL as unknown as anchor.Idl,
+      this.provider, // Provider d'abord
+      PROGRAM_ID // Puis la PublicKey du programme
+    );
       
     
     console.log('TimestampProofClient initialisé sur', SOLANA_CONFIG.network);
