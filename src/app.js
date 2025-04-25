@@ -1,9 +1,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
-const path = require('path');
+const path = require('path');  // Only declare path once
 const cors = require('cors');
 const helmet = require('helmet');
-const proofRoutes = require('./modules/proof/proofRoutes');
 
 // Load environment variables
 dotenv.config();
@@ -15,6 +14,9 @@ const Track = require('./models/Track');
 // Import module routes
 const userRoutes = require('./modules/user/userRoutes');
 const magicRoutes = require('./modules/magic/magicRoutes'); // Ajout des routes Magic
+
+const trackRoutes = require('./modules/tracks/trackRoutes'); //ajout route tracks
+app.use('/api/tracks', trackRoutes);
 
 // Initialize Express application
 const app = express();
@@ -32,8 +34,6 @@ app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/api/users', userRoutes);
 app.use('/api/magic', magicRoutes); // Utilisation des routes Magic
 
-//timestamp proof of creation generation route 
-app.use('/api/proofs', proofRoutes);
 // Root route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to the music platform API' });
@@ -65,21 +65,6 @@ app.use((req, res) => {
     success: false,
     error: 'Route not found'
   });
-});
-
-const fs = require('fs');
-const path = require('path');
-
-const tempDirs = [
-  path.join(__dirname, '../temp'),
-  path.join(__dirname, '../temp/uploads'),
-  path.join(__dirname, '../temp/proofs')
-];
-
-tempDirs.forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
 });
 
 module.exports = app;

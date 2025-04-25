@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+
+// src/models/Track.js
 const TrackSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -41,6 +43,14 @@ const TrackSchema = new mongoose.Schema({
     default: true
   },
   tags: [String],
+  
+  proofOfCreation: {
+    transactionId: String,
+    signature: String,
+    timestamp: Number,
+    hash: String,
+    network: String
+  }
 }, {
   timestamps: true
 });
