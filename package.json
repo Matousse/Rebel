@@ -13,9 +13,11 @@
     "author": "",
     "license": "MIT",
     "dependencies": {
+        "@coral-xyz/anchor": "^0.31.1",
         "@magic-ext/solana": "^26.0.5",
         "@magic-sdk/admin": "^2.4.1",
-        "@solana/web3.js": "^1.98.0",
+        "@solana/web3.js": "^1.98.2",
+        "@types/uuid": "^10.0.0",
         "bcryptjs": "^2.4.3",
         "bip39": "^3.1.0",
         "bs58": "^6.0.0",
@@ -27,14 +29,18 @@
         "helmet": "^6.1.5",
         "jsonwebtoken": "^9.0.0",
         "magic-sdk": "^29.0.5",
-        "mongoose": "^7.0.3",
+        "mongoose": "^7.8.6",
         "multer": "^1.4.5-lts.1",
         "uuid": "^11.1.0"
     },
     "devDependencies": {
+        "@types/chai": "^5.2.1",
+        "@types/mocha": "^10.0.10",
         "@types/node": "^22.14.1",
         "axios": "^1.8.4",
+        "chai": "^5.2.0",
         "form-data": "^4.0.2",
+        "mocha": "^11.1.0",
         "nodemon": "^2.0.22",
         "ts-node": "^10.9.2",
         "typescript": "^5.8.3"
