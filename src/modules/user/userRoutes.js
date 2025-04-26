@@ -15,7 +15,8 @@ const {
   unfollowUser,
   likeTrack,
   unlikeTrack,
-  getUserLikes
+  getUserLikes,
+  becomeArtist
 } = require('./userController');
 
 // Import authentication middleware
@@ -63,6 +64,7 @@ router.post('/login', loginUser);
 // Note: Specific routes must come before parameterized routes
 router.get('/profile', protect, getUserProfile);
 router.put('/profile', protect, upload.single('profilePicture'), updateUserProfile);
+router.put('/become-artist', protect, becomeArtist);
 
 // Routes for following
 router.post('/follow/:userId', protect, followUser);

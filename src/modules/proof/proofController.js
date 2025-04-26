@@ -3,13 +3,13 @@ const Track = require('../../models/Track');
 const fs = require('fs');
 const path = require('path');
 const proofUtils = require('../../utils/proofUtils');
-const { accountService } = require('../../account-abstraction');
+const { accountService } = require('../../../dist/account-abstraction');
 
 // Importer le service de preuve - ajustez ce chemin selon votre structure
 // Note: Comme TypeScript est utilisé pour les services, nous devons importer le code compilé
 let ProofService, HashService;
 try {
-  const timestampProof = require('../../../dist/timestamp-proof/services');
+  const timestampProof = require('/Users/admin/Desktop/rebel/dist/timestamp-proof/services');
   ProofService = timestampProof.ProofService;
   HashService = timestampProof.HashService;
 } catch (error) {

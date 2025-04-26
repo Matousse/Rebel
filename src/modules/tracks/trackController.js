@@ -1,17 +1,18 @@
+// src/modules/tracks/trackController.js
 const Track = require('../../models/Track');
-const User = require('../../modules/user/userModel');
-const { accountService } = require('../../../dist/account-abstraction');
+const User = require('../user/userModel');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
+const { proofService } = require('../../../dist/account-abstraction');
 
-// @desc    Upload a new track
+// @desc    Upload a track
 // @route   POST /api/tracks
-// @access  Private (artist only)
+// @access  Private (Artist only)
 exports.uploadTrack = async (req, res) => {
   try {
     const { title, genre, description, tags } = req.body;
     
+    // Vérifier si un fichier a été téléchargé
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -19,19 +20,24 @@ exports.uploadTrack = async (req, res) => {
       });
     }
     
-    // Calculer la durée - en production, vous utiliseriez une bibliothèque comme musicmetadata
-    const duration = 180; // Valeur factice de 3 minutes
+    // Pour un système de production, calcul de la durée avec une bibliothèque comme music-metadata
+    // Ici nous utilisons une valeur factice
+    const duration = 180; // 3 minutes factices
     
-    // Créer le track dans la DB
+    // Créer le track dans la base de données
     const track = await Track.create({
       title,
       genre,
       description,
       tags: tags ? tags.split(',').map(tag => tag.trim()) : [],
       artist: req.user.id,
-      audioFile: req.file.path.replace('public/', ''),
-      duration
+      audioFile: req.file.filename,
+      duration,
+      isPublic: true
     });
+    
+    // Mettre à jour le compteur de tracks de l'utilisateur
+    await User.findByIdAndUpdate(req.user.id, { $inc: { tracksCount: 1 } });
     
     res.status(201).json({
       success: true,
@@ -46,10 +52,10 @@ exports.uploadTrack = async (req, res) => {
   }
 };
 
-// @desc    Create timestamp for a track (Proof of Creation)
-// @route   POST /api/tracks/:id/timestamp
-// @access  Private (artist only)
-exports.createTimestamp = async (req, res) => {
+// @desc    Generate blockchain proof for track
+// @route   POST /api/tracks/:id/proof
+// @access  Private
+exports.createProof = async (req, res) => {
   try {
     const track = await Track.findById(req.params.id);
     
@@ -60,81 +66,82 @@ exports.createTimestamp = async (req, res) => {
       });
     }
     
-    // Vérifier que l'utilisateur est le propriétaire du morceau
+    // Vérifier la propriété
     if (track.artist.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized - you are not the creator of this track'
+        message: 'You are not authorized to create a proof for this track'
       });
     }
     
-    // Vérifier si un timestamp existe déjà
-    if (track.proofOfCreation && track.proofOfCreation.signature) {
+    // Vérifier si l'utilisateur a une adresse Solana
+    const user = await User.findById(req.user.id);
+    if (!user.solanaAddress) {
       return res.status(400).json({
         success: false,
-        message: 'Timestamp already exists for this track'
+        message: 'You need a Solana wallet to create a proof'
       });
     }
     
-    // Calculer le hash du fichier audio
-    const audioFilePath = path.join(process.cwd(), 'public', track.audioFile);
-    const fileBuffer = fs.readFileSync(audioFilePath);
-    const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-    
-    // Récupérer l'utilisateur Magic/Solana
-    const magicUser = await accountService.getUserByEmail(req.user.email);
-    if (!magicUser) {
-      return res.status(404).json({
-        success: false,
-        message: 'No Solana account found for this user - please complete account setup first'
-      });
-    }
-    
-    // Créer la preuve de création via l'Account Abstraction
-    const transaction = await accountService.createProofOfCreation(
-      magicUser.id,
-      {
-        trackId: track._id.toString(),
-        title: track.title,
-        hash
-      }
-    );
-    
-    // Mettre à jour le document track
-    track.proofOfCreation = {
-      transactionId: transaction.id,
-      signature: transaction.signature,
-      timestamp: transaction.timestamp,
-      hash: hash,
-      network: transaction.metadata.network
+    // Créer les métadonnées pour la preuve
+    const metadata = {
+      title: track.title,
+      genre: track.genre,
+      artist: user.username,
+      createdAt: track.createdAt
     };
     
-    await track.save();
+    // Créer la preuve sur la blockchain
+    const proof = await proofService.createProofOfCreation(
+      track._id.toString(),
+      user._id.toString(),
+      metadata
+    );
+    
+    if (!proof.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to create blockchain proof',
+        error: proof.error
+      });
+    }
+    
+    // Ajouter la preuve au tableau de preuves de l'utilisateur
+    if (!user.proofs) {
+      user.proofs = [];
+    }
+    
+    user.proofs.push({
+      trackId: track._id,
+      timestamp: proof.timestamp,
+      signature: proof.signature,
+      transactionId: proof.transactionId
+    });
+    
+    await user.save();
     
     res.status(200).json({
       success: true,
       data: {
-        trackId: track._id,
-        title: track.title,
-        timestamp: track.proofOfCreation.timestamp,
-        signature: track.proofOfCreation.signature,
-        network: track.proofOfCreation.network
+        track: track._id,
+        proofTimestamp: proof.timestamp,
+        transactionId: proof.transactionId,
+        signature: proof.signature
       }
     });
   } catch (error) {
-    console.error('Error creating timestamp:', error);
+    console.error('Error creating proof:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error while creating timestamp',
-      error: error.message
+      message: 'Server error while creating proof'
     });
   }
 };
 
-// @desc    Verify timestamp for a track
-// @route   GET /api/tracks/:id/verify
-// @access  Public
-exports.verifyTimestamp = async (req, res) => {
+// @desc    Get proof for a track
+// @route   GET /api/tracks/:id/proof
+// @access  Private
+exports.getProof = async (req, res) => {
   try {
     const track = await Track.findById(req.params.id);
     
@@ -145,37 +152,58 @@ exports.verifyTimestamp = async (req, res) => {
       });
     }
     
-    if (!track.proofOfCreation || !track.proofOfCreation.signature) {
+    // Trouver l'utilisateur propriétaire du morceau
+    const artist = await User.findById(track.artist);
+    if (!artist) {
       return res.status(404).json({
         success: false,
-        message: 'No timestamp found for this track'
+        message: 'Track artist not found'
       });
     }
     
-    // Vérifier la signature via Account Abstraction
-    const isValid = await accountService.verifyProofOfCreation(
-      track.proofOfCreation.signature
+    // Trouver la preuve pour ce morceau
+    const proof = artist.proofs && artist.proofs.find(p => 
+      p.trackId.toString() === track._id.toString()
     );
+    
+    if (!proof) {
+      return res.status(404).json({
+        success: false,
+        message: 'No proof found for this track'
+      });
+    }
+    
+    // Vérifier la preuve sur la blockchain
+    let isVerified = false;
+    try {
+      if (proof.signature) {
+        isVerified = await proofService.verifyProof(proof.signature);
+      }
+    } catch (err) {
+      console.error('Error verifying proof:', err);
+    }
     
     res.status(200).json({
       success: true,
       data: {
-        trackId: track._id,
-        title: track.title,
-        artist: track.artist,
-        timestamp: track.proofOfCreation.timestamp,
-        signature: track.proofOfCreation.signature,
-        network: track.proofOfCreation.network,
-        isValid
+        track: {
+          id: track._id,
+          title: track.title,
+          artist: artist.username
+        },
+        proof: {
+          timestamp: proof.timestamp,
+          signature: proof.signature,
+          transactionId: proof.transactionId,
+          verified: isVerified
+        }
       }
     });
   } catch (error) {
-    console.error('Error verifying timestamp:', error);
+    console.error('Error retrieving proof:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error while verifying timestamp'
+      message: 'Server error while retrieving proof'
     });
   }
 };
-
-// Ajoutez les autres méthodes CRUD selon vos besoins

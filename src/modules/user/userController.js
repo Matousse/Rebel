@@ -187,6 +187,44 @@ exports.updateUserProfile = async (req, res) => {
   }
 };
 
+// @desc    Update user to artist status
+// @route   PUT /api/users/become-artist
+// @access  Private
+exports.becomeArtist = async (req, res) => {
+  try {
+    // Update user to artist status
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { isArtist: true },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'You are now registered as an artist',
+      data: {
+        id: updatedUser._id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        isArtist: updatedUser.isArtist
+      }
+    });
+  } catch (error) {
+    console.error('Error updating to artist status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating to artist status'
+    });
+  }
+};
+
 // @desc    Get user by ID
 // @route   GET /api/users/:id
 // @access  Public

@@ -1,20 +1,16 @@
+// src/modules/tracks/trackRoutes.js
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-
-// Import controllers
+const { protect, artistOnly } = require('../../middleware/authMiddleware');
 const {
   uploadTrack,
-  createTimestamp,
-  verifyTimestamp
-  // ... autres méthodes
+  createProof,
+  getProof
 } = require('./trackController');
 
-// Import middleware
-const { protect, artistOnly } = require('../../middleware/authMiddleware');
-
-// Configure multer for track uploads
+// Configuration multer pour les uploads audio
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, path.join(__dirname, '../../../public/uploads/tracks'));
@@ -25,12 +21,16 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  // Accept audio files
-  const allowedMimeTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg'];
-  if (allowedMimeTypes.includes(file.mimetype)) {
+  // Accepter uniquement les fichiers audio
+  const allowedTypes = [
+    'audio/mpeg', 'audio/mp3', 'audio/wav', 
+    'audio/ogg', 'audio/flac', 'audio/aac'
+  ];
+  
+  if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('File must be an audio file (MP3, WAV, OGG)'), false);
+    cb(new Error('File must be an audio file'), false);
   }
 };
 
@@ -42,9 +42,7 @@ const upload = multer({
 
 // Routes
 router.post('/', protect, artistOnly, upload.single('audioFile'), uploadTrack);
-router.post('/:id/timestamp', protect, artistOnly, createTimestamp);
-router.get('/:id/verify', verifyTimestamp);
-
-// ... autres routes
+router.post('/:id/proof', protect, createProof);
+router.get('/:id/proof', protect, getProof);
 
 module.exports = router;

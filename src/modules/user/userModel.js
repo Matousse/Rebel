@@ -1,4 +1,7 @@
+// src/modules/user/userModel.js
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const UserSchema = new mongoose.Schema({
   username: {
@@ -37,6 +40,10 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  isArtist: {
+    type: Boolean,
+    default: false
+  },
   website: {
     type: String,
     default: ''
@@ -53,9 +60,11 @@ const UserSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Track'
   }],
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
-  // Nouveaux champs pour l'AA
+  tracksCount: {
+    type: Number,
+    default: 0
+  },
+  // Champs pour l'Account Abstraction
   solanaAddress: {
     type: String,
     sparse: true
@@ -63,8 +72,51 @@ const UserSchema = new mongoose.Schema({
   magicIssuerId: {
     type: String,
     sparse: true
-  }
+  },
+  // Champs pour stockage des preuves blockchain
+  proofs: [{
+    trackId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Track'
+    },
+    timestamp: Number,
+    signature: String,
+    transactionId: String
+  }],
+  resetPasswordToken: String,
+  resetPasswordExpire: Date
 }, {
   timestamps: true
 });
+
+// Method to compare passwords
+UserSchema.methods.matchPassword = async function(enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Generate and return a JWT
+UserSchema.methods.getSignedJwtToken = function() {
+  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE
+  });
+};
+
+// Middleware to hash password before saving
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    next();
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+});
+
+// Method to compare passwords
+UserSchema.methods.matchPassword = async function(enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Generate and return a JWT
+UserSchema.methods.get
+
 module.exports = mongoose.models.User || mongoose.model('User', UserSchema);
