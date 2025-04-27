@@ -1,22 +1,19 @@
-import { v4 as uuidv4 } from 'uuid';
-import { Keypair, PublicKey } from '@solana/web3.js';
-import { 
-  ProofCreationParams, 
-  CreationProof, 
-  ProofStatus,
-  ProofVerificationResult,
-  ProofJson
-} from '../interfaces/types';
-import { HashService } from './hash-service';
+// src/timestamp-proof/services/proof-service.ts
+
 import { SolanaService } from '../../account-abstraction/services/solana-service';
-import { TimestampProofClient } from '../anchor/client';
+import { ProofCreationParams, CreationProof, ProofStatus, ProofVerificationResult, ProofJson } from '../interfaces/types';
+import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
+
+// Import the JavaScript client directly
+const { createAnchorClient } = require('../../utils/anchorClient');
 
 /**
  * Service principal pour la gestion des preuves de création horodatées
  */
 export class ProofService {
   private solanaService: SolanaService;
-  private proofClient: TimestampProofClient;
+  private anchorClient: any;
   private proofs: Map<string, CreationProof> = new Map();
   
   /**
@@ -26,9 +23,21 @@ export class ProofService {
   constructor(solanaService: SolanaService) {
     this.solanaService = solanaService;
     
-    // Initialiser le client Anchor avec le keypair admin
-    const adminKeypair = this.solanaService.getAdminKeypair();
-    this.proofClient = new TimestampProofClient(adminKeypair);
+    // Initialize the Anchor client with the admin keypair
+    try {
+      const adminPrivateKey = process.env.ADMIN_PRIVATE_KEY;
+      if (adminPrivateKey) {
+        this.anchorClient = createAnchorClient(
+          adminPrivateKey, 
+          this.solanaService.getConnection().rpcEndpoint
+        );
+        console.log('Anchor client initialized successfully');
+      } else {
+        console.error("ADMIN_PRIVATE_KEY not defined, Anchor functionality will be disabled");
+      }
+    } catch (error) {
+      console.error("Failed to initialize Anchor client:", error);
+    }
   }
   
   /**
@@ -40,8 +49,12 @@ export class ProofService {
     const { trackId, artistId, artistPublicKey, title, audioBuffer } = params;
     
     // Générer le hash du contenu audio
-    const contentHash = HashService.generateContentHash(audioBuffer);
-    const contentHashBytes = HashService.hexToBytes(contentHash);
+    const contentHash = crypto
+      .createHash('sha256')
+      .update(audioBuffer)
+      .digest('hex');
+    
+    const contentHashBytes = Buffer.from(contentHash, 'hex');
     
     // Vérifier si c'est la première preuve pour cette piste
     const existingProofs = Array.from(this.proofs.values())
@@ -64,17 +77,37 @@ export class ProofService {
         createdAt: Date.now()
       },
       status: 'PENDING',
-      cost: isFreeProof ? 0 : 10, // 10 Rebellion Points pour les preuves suivantes
-      isPaid: isFreeProof, // La première preuve est automatiquement considérée comme payée
+      cost: isFreeProof ? 0 : 10,
+      isPaid: isFreeProof,
       version
     };
     
     // Enregistrer la preuve dans notre système
     this.proofs.set(proof.id, proof);
     
-    // Si c'est gratuit ou déjà payé, enregistrer sur la blockchain
-    if (proof.isPaid) {
-      await this.storeProofOnChain(proof);
+    // Si c'est gratuit ou déjà payé, et que l'Anchor client est disponible,
+    // essayer d'enregistrer sur la blockchain
+    if (proof.isPaid && this.anchorClient) {
+      try {
+        const result = await this.anchorClient.mintProofOfCreation(
+          artistPublicKey,
+          contentHash
+        );
+        
+        if (result.success) {
+          const updatedProof: CreationProof = {
+            ...proof,
+            status: 'CONFIRMED',
+            transactionId: result.transactionId,
+            pdaAddress: result.pdaAddress
+          };
+          
+          this.proofs.set(proof.id, updatedProof);
+          return updatedProof;
+        }
+      } catch (error) {
+        console.error(`Erreur lors de l'enregistrement blockchain:`, error);
+      }
     }
     
     return proof;
@@ -86,60 +119,36 @@ export class ProofService {
    * @returns Preuve mise à jour avec les informations de transaction
    */
   async storeProofOnChain(proof: CreationProof): Promise<CreationProof> {
+    if (!this.anchorClient) {
+      console.error("Anchor client not initialized");
+      return {
+        ...proof,
+        status: 'FAILED'
+      };
+    }
+  
     try {
-      // Créer un keypair temporaire pour l'artiste
-      // Dans une implémentation réelle, l'artiste devrait signer lui-même
-      // via une wallet connectée au frontend
-      const artistKeypair = Keypair.fromSecretKey(
-        new Uint8Array(Buffer.from(this.solanaService.getAdminKeypair().secretKey))
+      const result = await this.anchorClient.mintProofOfCreation(
+        proof.metadata.artistPublicKey,
+        proof.metadata.contentHash
       );
       
-      // Convertir la clé publique de l'artiste de string à PublicKey
-      const artistPublicKey = new PublicKey(proof.metadata.artistPublicKey);
-      
-      // Vérifier si la preuve existe déjà sur la blockchain
-      const [pdaAddress, _] = await this.proofClient.deriveProofPDA(
-        artistPublicKey,
-        proof.metadata.contentHashBytes
-      );
-      
-      const exists = await this.proofClient.proofExists(
-        artistPublicKey,
-        proof.metadata.contentHashBytes
-      );
-      
-      if (exists) {
-        // La preuve existe déjà, simplement mettre à jour notre état local
+      if (result.success) {
         const updatedProof: CreationProof = {
           ...proof,
           status: 'CONFIRMED',
-          pdaAddress: pdaAddress.toString()
+          transactionId: result.transactionId,
+          pdaAddress: result.pdaAddress
         };
         
         this.proofs.set(proof.id, updatedProof);
         return updatedProof;
+      } else {
+        throw new Error(result.error || "Unknown error during blockchain storage");
       }
-      
-      // Créer la preuve sur la blockchain
-      const txSignature = await this.proofClient.mintProofOfCreation(
-        artistKeypair,
-        proof.metadata.contentHashBytes
-      );
-      
-      // Mettre à jour la preuve avec les informations de transaction
-      const updatedProof: CreationProof = {
-        ...proof,
-        status: 'CONFIRMED',
-        transactionId: txSignature,
-        pdaAddress: pdaAddress.toString()
-      };
-      
-      this.proofs.set(proof.id, updatedProof);
-      return updatedProof;
     } catch (error) {
       console.error(`Erreur lors de l'enregistrement de la preuve ${proof.id} sur la blockchain:`, error);
       
-      // Mettre à jour la preuve comme échouée
       const failedProof: CreationProof = {
         ...proof,
         status: 'FAILED'
@@ -231,7 +240,11 @@ export class ProofService {
     const latestProof = proofs[proofs.length - 1];
     
     // Vérifier le hash du contenu
-    const contentHash = HashService.generateContentHash(audioBuffer);
+    const contentHash = crypto
+      .createHash('sha256')
+      .update(audioBuffer)
+      .digest('hex');
+      
     const hashMatches = contentHash === latestProof.metadata.contentHash;
     
     if (!hashMatches) {
@@ -247,15 +260,14 @@ export class ProofService {
     
     // Vérifier la preuve sur la blockchain
     let chainVerified = false;
-    if (onChain && latestProof.pdaAddress) {
+    if (onChain && latestProof.pdaAddress && this.anchorClient) {
       try {
-        const artistPublicKey = new PublicKey(latestProof.metadata.artistPublicKey);
-        const proofData = await this.proofClient.getProofOfCreation(
-          artistPublicKey,
-          latestProof.metadata.contentHashBytes
+        const verificationResult = await this.anchorClient.verifyFileProof(
+          latestProof.metadata.artistPublicKey,
+          audioBuffer
         );
         
-        chainVerified = proofData !== null;
+        chainVerified = verificationResult.verified;
       } catch (error) {
         console.error('Erreur lors de la vérification sur la blockchain:', error);
       }

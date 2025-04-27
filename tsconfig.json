@@ -12,5 +12,5 @@
       "declaration": true
     },
     "include": ["src/**/*"],
-    "exclude": ["node_modules", "src/timestamp-proof/**/*" ]
+    "exclude": ["node_modules"]
   }

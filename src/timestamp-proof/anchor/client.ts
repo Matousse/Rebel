@@ -2,19 +2,18 @@ import * as anchor from '@coral-xyz/anchor';
 import { Program } from '@coral-xyz/anchor';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { IDL } from './idl';
-import idl from './timestamp_proof.json';
 import { ProofOfCreationAccount, TimestampProof } from './types';
 import { SOLANA_CONFIG } from '../../account-abstraction/config';
 
 // Adresse du programme après déploiement
-const PROGRAM_ID = new PublicKey('Gk5KLraA6vHgKGPSkDmBhagMtE7Yn8xqzv99nee6F22R');
+const PROGRAM_ID = new PublicKey('8Hh439HNMKGRTD1gmnifrJ2RrP6y8PsKwHRRQyponubt');
 
 /**
  * Client pour interagir avec le programme Anchor timestamp_proof
  */
 export class TimestampProofClient {
   private connection: Connection;
-  private program: Program;
+  private program: anchor.Program<TimestampProof>;
   private provider: anchor.AnchorProvider;
 
   /**
@@ -35,13 +34,13 @@ export class TimestampProofClient {
       { commitment: 'confirmed', preflightCommitment: 'confirmed' }
     );
     
-    // Initialiser le programme
-    this.program = new Program(
-      IDL as unknown as anchor.Idl,
-      this.provider, // Provider d'abord
-      PROGRAM_ID // Puis la PublicKey du programme
+    // Use anchor.workspace approach which handles IDL types better
+    // This needs proper type casting for TypeScript to understand the structure
+    this.program = new anchor.Program<TimestampProof>(
+      IDL as any,
+      PROGRAM_ID,
+      this.provider
     );
-      
     
     console.log('TimestampProofClient initialisé sur', SOLANA_CONFIG.network);
   }
@@ -122,17 +121,30 @@ export class TimestampProofClient {
         trackHash
       );
       
-      // Récupérer le compte
-      const proofAccount = await this.program.account.proofOfCreation.fetch(
-        proofPDA
-      ) as ProofOfCreationAccount;
+      // First check if account exists
+      const accountInfo = await this.connection.getAccountInfo(proofPDA);
+      if (!accountInfo) {
+        return null;
+      }
       
-      return {
-        artist: proofAccount.artist.toString(),
-        trackHash: new Uint8Array(proofAccount.trackHash),
-        timestamp: proofAccount.timestamp.toNumber(),
-        pdaAddress: proofPDA.toString()
-      };
+      // Use direct coder approach to avoid TypeScript issues
+      const coder = new anchor.BorshAccountsCoder(IDL as any);
+      try {
+        const decoded = coder.decode(
+          'ProofOfCreation', // The account name from your IDL
+          accountInfo.data
+        );
+        
+        return {
+          artist: decoded.artist.toString(),
+          trackHash: new Uint8Array(decoded.trackHash),
+          timestamp: decoded.timestamp.toNumber(),
+          pdaAddress: proofPDA.toString()
+        };
+      } catch (decodeError) {
+        console.error('Failed to decode account:', decodeError);
+        return null;
+      }
     } catch (error) {
       // Si le compte n'existe pas, renvoyer null
       console.log('Preuve non trouvée ou erreur:', error);

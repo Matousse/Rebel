@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/timestamp_proof.json`.
  */
 export type TimestampProof = {
-  "address": "DujDbJgRWo6cQcNTdT6FPbqWdLQg1mioJEGmHxH5uvf1",
+  "address": "8Hh439HNMKGRTD1gmnifrJ2RrP6y8PsKwHRRQyponubt",
   "metadata": {
     "name": "timestampProof",
     "version": "0.1.0",
@@ -16,7 +16,7 @@ export type TimestampProof = {
     {
       "name": "getProofOfCreation",
       "docs": [
-        "Récupère les métadonnées d'une preuve de création"
+        "Vérifie l'existence d'une preuve de création"
       ],
       "discriminator": [
         136,
@@ -32,13 +32,13 @@ export type TimestampProof = {
         {
           "name": "artist",
           "docs": [
-            "mais n'est pas utilisée pour accéder aux données ou signer la transaction"
+            "Artiste pour dériver la PDA"
           ]
         },
         {
           "name": "proofOfCreation",
           "docs": [
-            "Le compte PDA qui stocke la preuve de création"
+            "Compte de la preuve existante"
           ],
           "pda": {
             "seeds": [
@@ -89,9 +89,24 @@ export type TimestampProof = {
       ]
     },
     {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [],
+      "args": []
+    },
+    {
       "name": "mintProofOfCreation",
       "docs": [
-        "Mint un nouveau micro-NFT comme preuve de création pour un artiste et un track"
+        "Mint une nouvelle preuve de création sous forme de micro-NFT"
       ],
       "discriminator": [
         22,
@@ -107,8 +122,7 @@ export type TimestampProof = {
         {
           "name": "artist",
           "docs": [
-            "pour dériver l'adresse PDA, mais n'est pas utilisée pour accéder aux données",
-            "L'artiste qui crée la preuve (signer)"
+            "Artiste créateur de la preuve (doit signer)"
           ],
           "writable": true,
           "signer": true
@@ -116,7 +130,7 @@ export type TimestampProof = {
         {
           "name": "payer",
           "docs": [
-            "Le compte qui paie les frais de transaction (peut être le même que l'artiste)"
+            "Payer des frais (peut être l'artiste lui-même)"
           ],
           "writable": true,
           "signer": true
@@ -124,7 +138,7 @@ export type TimestampProof = {
         {
           "name": "proofOfCreation",
           "docs": [
-            "Le compte PDA qui stockera la preuve de création"
+            "Compte PDA qui stocke la preuve de création"
           ],
           "writable": true,
           "pda": {
@@ -164,6 +178,9 @@ export type TimestampProof = {
         },
         {
           "name": "systemProgram",
+          "docs": [
+            "Programme système"
+          ],
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -199,22 +216,25 @@ export type TimestampProof = {
     {
       "code": 6000,
       "name": "duplicateMint",
-      "msg": "Une preuve pour ce track existe déjà"
+      "msg": "Une preuve pour ce track existe déjà."
     },
     {
       "code": 6001,
       "name": "invalidTrackHash",
-      "msg": "Hash de track invalide"
+      "msg": "Hash du track invalide."
     },
     {
       "code": 6002,
       "name": "proofOfCreationNotFound",
-      "msg": "Preuve de création non trouvée"
+      "msg": "Preuve de création introuvable."
     }
   ],
   "types": [
     {
       "name": "proofOfCreation",
+      "docs": [
+        "Structure stockant les métadonnées de la preuve de création"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
