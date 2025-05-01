@@ -67,16 +67,28 @@ function createAnchorClient(adminPrivateKey, solanaEndpoint = 'https://api.devne
       deriveProofPDA: async (artistPublicKey, trackHash) => {
         try {
           console.log('Deriving PDA for proof with artist:', artistPublicKey);
-          // Convert string hash to bytes if needed
-          const hashBytes = typeof trackHash === 'string' 
-            ? Buffer.from(trackHash, 'hex') 
-            : trackHash;
           
+          // Normaliser le hash en buffer de 32 octets
+          let hashBytes;
+          if (typeof trackHash === 'string') {
+            // Si c'est une chaîne hexadécimale, la convertir en Buffer
+            hashBytes = Buffer.from(trackHash, 'hex');
+          } else if (Buffer.isBuffer(trackHash)) {
+            hashBytes = trackHash;
+          } else {
+            hashBytes = Buffer.from(trackHash);
+          }
+          
+          // S'assurer que le hash fait exactement 32 octets
+          const hashData = Buffer.alloc(32);
+          hashBytes.copy(hashData, 0, 0, Math.min(32, hashBytes.length));
+          
+          // Dériver l'adresse PDA
           const result = PublicKey.findProgramAddressSync(
             [
               Buffer.from('proof-of-creation'),
               new PublicKey(artistPublicKey).toBuffer(),
-              Buffer.from(hashBytes).slice(0, 32)
+              hashData
             ],
             PROGRAM_ID
           );
@@ -97,33 +109,29 @@ function createAnchorClient(adminPrivateKey, solanaEndpoint = 'https://api.devne
        */
       mintProofOfCreation: async (artistPublicKey, trackHash) => {
         try {
-          console.log('Attempting to mint proof of creation for artist:', artistPublicKey);
-          console.log('Track hash:', typeof trackHash === 'string' ? trackHash : 'buffer');
+          console.log('Creating proof of creation for artist:', artistPublicKey);
           
-          // Convert string hash to bytes if needed
-          const hashBytes = typeof trackHash === 'string' 
-            ? Buffer.from(trackHash, 'hex') 
-            : trackHash;
-          
-          // Ensure hash is correct size (32 bytes)
-          let hashData;
-          if (hashBytes.length !== 32) {
-            const originalLength = hashBytes.length;
-            console.log('Hash length is not 32 bytes, adjusting...');
-            // If too short, pad with zeros; if too long, truncate
-            hashData = Buffer.alloc(32);
-            hashBytes.copy(hashData, 0, 0, Math.min(32, hashBytes.length));
-            console.log(`Hash length adjusted from ${originalLength} to 32 bytes`);
+          // Normaliser le hash en buffer de 32 octets
+          let hashBytes;
+          if (typeof trackHash === 'string') {
+            // Si c'est une chaîne hexadécimale, la convertir en Buffer
+            hashBytes = Buffer.from(trackHash, 'hex');
+          } else if (Buffer.isBuffer(trackHash)) {
+            hashBytes = trackHash;
           } else {
-            hashData = hashBytes;
+            hashBytes = Buffer.from(trackHash);
           }
           
-          // Derive the PDA for the proof
+          // S'assurer que le hash fait exactement 32 octets
+          const hashData = Buffer.alloc(32);
+          hashBytes.copy(hashData, 0, 0, Math.min(32, hashBytes.length));
+          
+          // Dériver l'adresse PDA pour la preuve
           console.log('Finding PDA address for the proof...');
           const [proofPDA, bump] = PublicKey.findProgramAddressSync(
             [
               Buffer.from('proof-of-creation'),
-              adminKeypair.publicKey.toBuffer(), // Utiliser admin comme artiste
+              adminKeypair.publicKey.toBuffer(), // Toujours utiliser l'admin comme artiste
               hashData
             ],
             PROGRAM_ID
@@ -195,25 +203,27 @@ function createAnchorClient(adminPrivateKey, solanaEndpoint = 'https://api.devne
       getProofOfCreation: async (artistPublicKey, trackHash) => {
         try {
           console.log('Getting proof of creation for artist:', artistPublicKey);
-          // Convert string hash to bytes if needed
-          const hashBytes = typeof trackHash === 'string' 
-            ? Buffer.from(trackHash, 'hex') 
-            : trackHash;
           
-          // Ensure hash is correct size (32 bytes)
-          let hashData;
-          if (hashBytes.length !== 32) {
-            hashData = Buffer.alloc(32);
-            hashBytes.copy(hashData, 0, 0, Math.min(32, hashBytes.length));
+          // Normaliser le hash en buffer de 32 octets
+          let hashBytes;
+          if (typeof trackHash === 'string') {
+            // Si c'est une chaîne hexadécimale, la convertir en Buffer
+            hashBytes = Buffer.from(trackHash, 'hex');
+          } else if (Buffer.isBuffer(trackHash)) {
+            hashBytes = trackHash;
           } else {
-            hashData = hashBytes;
+            hashBytes = Buffer.from(trackHash);
           }
           
-          // Derive the PDA for the proof
+          // S'assurer que le hash fait exactement 32 octets
+          const hashData = Buffer.alloc(32);
+          hashBytes.copy(hashData, 0, 0, Math.min(32, hashBytes.length));
+          
+          // Dériver l'adresse PDA pour la preuve - utiliser la même clé publique qu'à la création
           const [proofPDA, _] = PublicKey.findProgramAddressSync(
             [
               Buffer.from('proof-of-creation'),
-              adminKeypair.publicKey.toBuffer(), // Admin comme artiste
+              adminKeypair.publicKey.toBuffer(), // Toujours utiliser l'admin comme artiste
               hashData
             ],
             PROGRAM_ID
@@ -232,39 +242,30 @@ function createAnchorClient(adminPrivateKey, solanaEndpoint = 'https://api.devne
           
           // Essayer de décoder les données comme dans le test fonctionnel
           try {
-            if (accountInfo.data.length >= 8 + 32 + 32 + 8) {
-              // Décodage des données (format: discriminator + pubkey + hash + timestamp)
-              const artistPubkey = new PublicKey(accountInfo.data.slice(8, 8 + 32));
-              const storedHash = accountInfo.data.slice(8 + 32, 8 + 32 + 32);
-              const timestamp = accountInfo.data.readBigInt64LE(8 + 32 + 32);
-              
-              console.log('Décodage réussi:');
-              console.log('- Artiste:', artistPubkey.toString());
-              console.log('- Hash stocké:', Buffer.from(storedHash).toString('hex'));
-              console.log('- Timestamp:', new Date(Number(timestamp) * 1000).toISOString());
+            if (accountInfo.data.length >= 8 + 32) {
+              // Les 8 premiers octets sont le discriminateur, les 32 suivants sont le hash
+              const storedHash = accountInfo.data.slice(8, 8 + 32);
+              const storedTimestamp = accountInfo.data.length >= 8 + 32 + 8 ? 
+                accountInfo.data.readBigUInt64LE(8 + 32) : BigInt(0);
               
               return {
-                artist: artistPubkey.toString(),
-                trackHash: Buffer.from(storedHash),
-                timestamp: Number(timestamp),
-                pdaAddress: proofPDA.toString()
-              };
-            } else {
-              console.log('Format de données inattendu, retour des données de base');
-              return {
-                artist: adminKeypair.publicKey.toString(),
-                trackHash: hashBytes,
-                timestamp: Date.now() / 1000,
-                pdaAddress: proofPDA.toString()
+                exists: true,
+                pdaAddress: proofPDA.toString(),
+                hash: Buffer.from(storedHash).toString('hex'),
+                timestamp: Number(storedTimestamp)
               };
             }
-          } catch (decodeError) {
-            console.error('Erreur de décodage, retour des données de base:', decodeError);
             return {
-              artist: adminKeypair.publicKey.toString(),
-              trackHash: hashBytes,
-              timestamp: Date.now() / 1000,
-              pdaAddress: proofPDA.toString()
+              exists: true,
+              pdaAddress: proofPDA.toString(),
+              rawData: accountInfo.data
+            };
+          } catch (decodeError) {
+            console.error('Error decoding proof data:', decodeError);
+            return {
+              exists: true,
+              pdaAddress: proofPDA.toString(),
+              error: decodeError.message
             };
           }
         } catch (error) {
@@ -274,64 +275,38 @@ function createAnchorClient(adminPrivateKey, solanaEndpoint = 'https://api.devne
       },
       
       /**
-       * Verifies a proof against a file
+       * Verifies a file proof against the blockchain
        * @param {string} artistPublicKey Artist's public key as string
-       * @param {Buffer} fileContent File content to verify
+       * @param {Buffer} fileBuffer File buffer to verify
        * @returns {Object} Verification result
        */
-      verifyFileProof: async (artistPublicKey, fileContent) => {
+      verifyFileProof: async (artistPublicKey, fileBuffer) => {
         try {
           console.log('Verifying file proof for artist:', artistPublicKey);
-          // Calculate the hash of the file
-          const fileHash = crypto.createHash('sha256').update(fileContent).digest('hex');
+          
+          // Calculer le hash du fichier
+          const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
           console.log('Calculated file hash:', fileHash);
           
-          // Convert the hex string to proper bytes
-          const hashBytes = Buffer.from(fileHash, 'hex');
+          // Vérifier si une preuve existe pour ce hash
+          const proof = await module.exports.createAnchorClient(
+            adminPrivateKey, 
+            solanaEndpoint
+          ).getProofOfCreation(artistPublicKey, fileHash);
           
-          // Derive the PDA for the proof - using admin public key instead of artist
-          const [proofPDA, _] = PublicKey.findProgramAddressSync(
-            [
-              Buffer.from('proof-of-creation'),
-              adminKeypair.publicKey.toBuffer(), // Admin comme artiste
-              hashBytes.slice(0, 32)
-            ],
-            PROGRAM_ID
-          );
-          
-          console.log('Looking for proof at address:', proofPDA.toString());
-          
-          // Check if the account exists in the blockchain
-          const accountInfo = await connection.getAccountInfo(proofPDA);
-          if (!accountInfo) {
-            console.log('No proof found on blockchain');
-            return {
-              verified: false,
-              message: 'No proof found for this file and artist'
-            };
+          if (!proof) {
+            console.log('No proof found for this file hash');
+            return { verified: false, reason: 'No proof found' };
           }
           
-          console.log('Proof verified successfully!');
-          
-          // Decode the timestamp if possible
-          let timestamp;
-          try {
-            if (accountInfo.data.length >= 8 + 32 + 32 + 8) {
-              timestamp = accountInfo.data.readBigInt64LE(8 + 32 + 32);
-              console.log('Timestamp from blockchain:', new Date(Number(timestamp) * 1000).toISOString());
-            }
-          } catch (e) {
-            console.error('Error reading timestamp:', e);
-            timestamp = BigInt(Math.floor(Date.now() / 1000));
-          }
+          console.log('Proof found:', proof);
           
           return {
             verified: true,
-            timestamp: new Date(Number(timestamp) * 1000),
-            pdaAddress: proofPDA.toString()
+            proof: proof
           };
         } catch (error) {
-          console.error('Error verifying file:', error);
+          console.error('Error verifying file proof:', error);
           return {
             verified: false,
             error: error.message
@@ -340,9 +315,11 @@ function createAnchorClient(adminPrivateKey, solanaEndpoint = 'https://api.devne
       }
     };
   } catch (error) {
-    console.error('Error in Solana client initialization:', error);
+    console.error('Failed to initialize Anchor client:', error);
     throw error;
   }
 }
 
-module.exports = { createAnchorClient };
+module.exports = {
+  createAnchorClient
+};

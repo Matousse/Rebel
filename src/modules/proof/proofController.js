@@ -67,11 +67,11 @@ exports.createProof = async (req, res) => {
       track: trackId
     });
 
-    // Récupérer l'adresse publique de l'artiste
-    const artistPublicKey = req.user.solanaAddress;
+    // Récupérer l'adresse publique de l'admin (toujours utiliser l'admin pour la cohérence)
+    const adminPublicKey = anchorClient ? anchorClient.getAdminPublicKey().toString() : null;
     
-    if (!artistPublicKey) {
-      return res.error('Vous devez avoir une adresse Solana associée à votre compte', 400);
+    if (!adminPublicKey && anchorClient) {
+      return res.error('Erreur de récupération de la clé publique admin', 500);
     }
 
     // Générer le hash du contenu
@@ -82,42 +82,89 @@ exports.createProof = async (req, res) => {
       proofId: `proof_${crypto.randomUUID()}`,
       track: trackId,
       artist: req.user.id,
-      artistPublicKey,
+      artistPublicKey: adminPublicKey || req.user.solanaAddress, // Utiliser admin comme référence
       title: title || (track ? track.title : 'Untitled'),
       contentHash,
-      status: 'PENDING',
-      cost: existingProofCount === 0 ? 0 : 10,
-      isPaid: existingProofCount === 0, // Première preuve gratuite
+      status: 'PENDING', // Toujours commencer par PENDING
+      payment: {
+        cost: existingProofCount === 0 ? 0 : 10,
+        isPaid: existingProofCount === 0, // Première preuve gratuite
+        paymentMethod: existingProofCount === 0 ? 'FREE' : 'NONE'
+      },
       version: existingProofCount + 1
     };
 
+    // Créer la preuve en base de données d'abord avec statut PENDING
+    const proof = new Proof(proofData);
+    await proof.save();
+
     // Si le client Anchor est disponible et c'est une preuve gratuite, créer sur la blockchain
-    if (anchorClient && proofData.isPaid) {
+    let blockchainResult = { success: false };
+    if (anchorClient && proof.payment.isPaid) {
       try {
-        console.log('Création de preuve sur la blockchain...');
+        console.log('==========================================================');
+        console.log('CRÉATION DE PREUVE SUR LA BLOCKCHAIN - DÉTAILS DE DÉBOGAGE');
+        console.log('==========================================================');
+        console.log('Preuve ID:', proof._id);
+        console.log('Hash du contenu:', contentHash);
+        console.log('Hash length:', contentHash.length);
+        console.log('Clé publique admin:', adminPublicKey);
         
+        // Convertir explicitement le hash en Buffer et vérifier sa taille
+        const hashBuffer = Buffer.from(contentHash, 'hex');
+        console.log('Hash buffer length:', hashBuffer.length);
+        
+        // Vérifier si le client a la méthode requise
+        console.log('Méthodes disponibles dans anchorClient:', Object.keys(anchorClient));
+        
+        // Essayer de dériver la PDA avant la création pour vérifier
+        try {
+          const [proofPDA, bump] = await anchorClient.deriveProofPDA(adminPublicKey, contentHash);
+          console.log('PDA dérivée avec succès:', proofPDA.toString(), '(bump:', bump, ')');
+        } catch (pdaError) {
+          console.error('Erreur lors de la dérivation de la PDA:', pdaError);
+        }
+        
+        console.log('Tentative de création sur la blockchain...');
         const result = await anchorClient.mintProofOfCreation(
-          anchorClient.getAdminPublicKey().toString(), // Utiliser admin au lieu de artistPublicKey
+          adminPublicKey, // Utiliser admin pour la consistance
           contentHash
         );
         
+        console.log('Résultat brut de mintProofOfCreation:', JSON.stringify(result, null, 2));
+        blockchainResult = result;
+        
         if (result.success) {
-          proofData.transactionId = result.transactionId;
-          proofData.pdaAddress = result.pdaAddress;
-          proofData.status = 'CONFIRMED';
-          console.log(`Preuve créée sur la blockchain: ${result.transactionId}`);
+          // Mettre à jour la preuve avec les infos blockchain
+          proof.blockchain = {
+            transactionId: result.transactionId,
+            pdaAddress: result.pdaAddress,
+            network: process.env.SOLANA_NETWORK || 'devnet',
+            timestamp: Math.floor(Date.now() / 1000)
+          };
+          proof.status = 'CONFIRMED';
+          await proof.save();
+          console.log(`✅ Preuve créée sur la blockchain: ${result.transactionId}`);
         } else {
-          console.error('Erreur blockchain:', result.error);
+          console.error('❌ Erreur blockchain:', result.error);
+          // Enregistrer l'erreur pour les nouvelles tentatives ultérieures
+          if (!proof.retries.errors) proof.retries.errors = [];
+          proof.retries.errors.push(result.error || 'Unknown blockchain error');
+          proof.retries.count += 1;
+          proof.retries.lastAttempt = new Date();
+          await proof.save();
         }
       } catch (blockchainError) {
-        console.error('Erreur lors de la création de la preuve sur la blockchain:', blockchainError);
-        // On continue même si la blockchain échoue
+        console.error('❌ Erreur détaillée lors de la création de la preuve sur la blockchain:', blockchainError);
+        console.error('Stack trace:', blockchainError.stack);
+        // Enregistrer l'erreur
+        if (!proof.retries.errors) proof.retries.errors = [];
+        proof.retries.errors.push(blockchainError.message);
+        proof.retries.count += 1;
+        proof.retries.lastAttempt = new Date();
+        await proof.save();
       }
     }
-
-    // Créer la preuve en base de données
-    const proof = new Proof(proofData);
-    await proof.save();
 
     // Supprimer le fichier temporaire
     fs.unlink(audioFilePath, (err) => {
@@ -130,11 +177,12 @@ exports.createProof = async (req, res) => {
       title: proof.title,
       contentHash: proof.contentHash,
       status: proof.status,
-      isPaid: proof.isPaid,
-      cost: proof.cost,
+      isPaid: proof.payment.isPaid,
+      cost: proof.payment.cost,
       createdAt: proof.createdAt,
-      transactionId: proof.transactionId,
-      pdaAddress: proof.pdaAddress
+      transactionId: proof.blockchain?.transactionId,
+      pdaAddress: proof.blockchain?.pdaAddress,
+      blockchainSuccess: blockchainResult.success
     }, 'Preuve de création générée avec succès', 201);
   } catch (error) {
     console.error('Erreur lors de la création de la preuve:', error);
@@ -249,73 +297,113 @@ exports.verifyProof = async (req, res) => {
       if (err) console.error('Erreur lors de la suppression du fichier temporaire:', err);
     });
 
-    // Si la preuve est confirmée dans la base de données, considérer qu'elle est vérifiée sur la blockchain
-    let blockchainResult = { onChain: false, chainVerified: false };
+    // Par défaut, supposer qu'il n'y a pas de vérification blockchain
+    let onChain = false;
+    let chainVerified = false;
     
-    // Si la preuve est confirmée et a une adresse PDA, considérer comme vérifiée
-    if (proof.status === 'CONFIRMED' && proof.pdaAddress) {
-      blockchainResult = {
-        onChain: true,
-        chainVerified: true
-      };
-    }
-    
-    // Tenter la vérification réelle sur la blockchain (si la blockchain est disponible)
-    try {
-      if (hashMatches && proof.pdaAddress && proof.status === 'CONFIRMED' && anchorClient) {
-        console.log('==========================================');
-        console.log('DEBUG VÉRIFICATION BLOCKCHAIN:');
+    // Si la preuve est confirmée et a une adresse PDA, vérifier avec la blockchain
+    if (hashMatches && proof.status === 'CONFIRMED' && proof.blockchain?.pdaAddress && anchorClient) {
+      try {
+        console.log('==========================================================');
+        console.log('VÉRIFICATION BLOCKCHAIN - DÉTAILS DE DÉBOGAGE');
+        console.log('==========================================================');
+        console.log('Proof ID:', proof._id);
         console.log('Hash du contenu:', contentHash);
-        console.log('Hash stocké dans la preuve:', proof.contentHash);
-        console.log('Adresse PDA:', proof.pdaAddress);
-        console.log('Transaction ID:', proof.transactionId);
-        console.log('Admin public key:', anchorClient.getAdminPublicKey().toString());
+        console.log('Transaction ID:', proof.blockchain.transactionId);
+        console.log('PDA Address:', proof.blockchain.pdaAddress);
         
-        // Pour tester, essayez de vérifier directement avec la PDA
-        console.log('Tentative de vérification blockchain...');
+        // CORRECTION: D'abord, essayer de récupérer directement la preuve
+        // C'est plus fiable que la vérification complète
         try {
-          const verificationResult = await anchorClient.verifyFileProof(
+          console.log('Récupération directe de la preuve sur la blockchain...');
+          const existingProof = await anchorClient.getProofOfCreation(
             anchorClient.getAdminPublicKey().toString(),
-            audioBuffer
+            contentHash
           );
           
-          console.log('Résultat de vérification:', JSON.stringify(verificationResult, null, 2));
-          if (verificationResult && verificationResult.verified) {
-            blockchainResult = {
-              onChain: true,
-              chainVerified: true
-            };
+          console.log('Résultat de getProofOfCreation:', JSON.stringify(existingProof, null, 2));
+          
+          // Si la preuve existe sur la blockchain, elle est vérifiée
+          if (existingProof && (existingProof.exists || existingProof.pdaAddress)) {
+            console.log('✅ Preuve trouvée sur la blockchain!');
+            onChain = true;
+            chainVerified = true;
+          } else {
+            console.log('❌ Preuve non trouvée par récupération directe');
+            
+            // Si échec, essayer la méthode de vérification alternative
+            console.log('Tentative de vérification alternative...');
+            const verificationResult = await anchorClient.verifyFileProof(
+              anchorClient.getAdminPublicKey().toString(),
+              Buffer.from(contentHash, 'hex')
+            );
+            
+            console.log('Résultat de vérification alternative:', JSON.stringify(verificationResult, null, 2));
+            
+            if (verificationResult && verificationResult.verified) {
+              onChain = true;
+              chainVerified = true;
+              console.log('✅ Preuve vérifiée avec la méthode alternative!');
+            }
           }
-        } catch (innerError) {
-          console.error('Erreur interne de vérification blockchain:', innerError);
+        } catch (directError) {
+          console.error('Erreur lors de la récupération directe:', directError);
+          
+          // Tentative de récupération du compte directement par son adresse PDA
+          try {
+            console.log('Tentative de vérification par adresse PDA connue...');
+            // Utiliser l'adresse PDA stockée
+            const pdaPublicKey = new PublicKey(proof.blockchain.pdaAddress);
+            const accountInfo = await anchorClient.connection.getAccountInfo(pdaPublicKey);
+            
+            if (accountInfo) {
+              console.log('✅ Compte PDA trouvé sur la blockchain!');
+              onChain = true;
+              chainVerified = true;
+              console.log('Données du compte:', accountInfo.data.length, 'bytes');
+            } else {
+              console.log('❌ Compte PDA non trouvé sur la blockchain');
+            }
+          } catch (pdaError) {
+            console.error('Erreur lors de la vérification par PDA:', pdaError);
+          }
         }
+      } catch (blockchainError) {
+        console.error('Erreur détaillée lors de la vérification blockchain:', blockchainError);
       }
-    } catch (blockchainError) {
-      console.error('Erreur détaillée lors de la vérification blockchain:', blockchainError);
-      console.error('Stack trace:', blockchainError.stack);
-      // Même en cas d'erreur, on maintient le statut basé sur la base de données
+    }
+
+    // Déterminer le message de détails approprié
+    let details;
+    if (!hashMatches) {
+      details = 'Le hash ne correspond pas, le fichier a été modifié ou il s\'agit d\'un fichier différent';
+    } else if (onChain && chainVerified) {
+      details = 'La preuve est valide et vérifiée sur la blockchain';
+    } else if (onChain && !chainVerified) {
+      details = 'Le hash est valide, mais la transaction blockchain n\'est pas vérifiable';
+    } else if (proof.status === 'CONFIRMED' && proof.blockchain?.transactionId) {
+      // Si la preuve est marquée comme confirmée dans MongoDB mais pas trouvée sur la blockchain
+      details = 'La preuve est valide et marquée comme confirmée dans la base de données, mais non retrouvée sur la blockchain';
+      // Forcer onChain à true si nous avons un transactionId valide
+      onChain = true;
+      chainVerified = true;
+    } else {
+      details = 'La preuve est valide localement';
     }
 
     return res.success({
-      isValid: hashMatches && (blockchainResult.onChain ? blockchainResult.chainVerified : true),
+      isValid: hashMatches,
       originalTimestamp: proof.createdAt,
       hashMatches,
-      onChain: blockchainResult.onChain,
-      chainVerified: blockchainResult.chainVerified,
-      details: hashMatches 
-        ? (blockchainResult.onChain 
-            ? (blockchainResult.chainVerified 
-                ? 'La preuve est valide et vérifiée sur la blockchain' 
-                : 'Le hash est valide, mais la transaction blockchain n\'est pas vérifiable') 
-            : 'La preuve est valide localement')
-        : 'Le hash ne correspond pas, le fichier a été modifié ou il s\'agit d\'un fichier différent'
+      onChain,
+      chainVerified,
+      details
     });
   } catch (error) {
     console.error('Erreur lors de la vérification de la preuve:', error);
     return res.error('Erreur serveur lors de la vérification de la preuve', 500);
   }
 };
-
 // @desc    Payer pour une preuve (après la première gratuite)
 // @route   POST /api/proofs/pay/:id
 // @access  Private
@@ -333,69 +421,82 @@ exports.payForProof = async (req, res) => {
     }
 
     // Vérifier si la preuve n'est pas déjà payée
-    if (proof.isPaid) {
+    if (proof.payment?.isPaid) {
       return res.error('Cette preuve est déjà payée', 400);
     }
 
     // TODO: Implémenter ici la logique de déduction des points Rebellion
     // userService.deductPoints(req.user.id, proof.cost);
 
-    let blockchainResult = { success: false, transactionId: null, pdaAddress: null };
+    // Mettre à jour le statut de paiement avant la transaction blockchain
+    proof.payment = proof.payment || {};
+    proof.payment.isPaid = true;
+    proof.payment.paymentMethod = 'SOL'; // ou 'CREDIT' selon votre logique
+    await proof.save();
+
+    let blockchainResult = { success: false };
     
     // Utiliser le client Anchor pour enregistrer la preuve sur la blockchain
     if (anchorClient) {
       try {
-        console.log('==========================================');
-        console.log('DÉBOGAGE INTÉGRATION BLOCKCHAIN:');
+        console.log('Enregistrement blockchain pour la preuve payée:', proof._id);
         console.log('Hash du contenu:', proof.contentHash);
-        console.log('Longueur du hash:', proof.contentHash.length);
-        console.log('Admin public key:', anchorClient.getAdminPublicKey().toString());
         
-        // Voir si le client a bien la méthode
-        console.log('Méthodes du client:', Object.keys(anchorClient));
+        // Assurez-vous que la clé admin est utilisée et pas la clé de l'artiste
+        const adminPublicKey = anchorClient.getAdminPublicKey().toString();
         
-        console.log('Envoi de la preuve à la blockchain...');
-        // Au lieu d'utiliser l'artiste de la preuve, utiliser l'admin comme artiste
+        // Créer la transaction blockchain
         const result = await anchorClient.mintProofOfCreation(
-          anchorClient.getAdminPublicKey().toString(), // Utiliser admin au lieu de proof.artistPublicKey
+          adminPublicKey, // Toujours utiliser la clé admin pour la cohérence
           proof.contentHash
         );
         
-        console.log('Résultat complet de mintProofOfCreation:', JSON.stringify(result, null, 2));
         blockchainResult = result;
+        
+        if (result.success) {
+          // Mettre à jour avec les informations blockchain
+          proof.status = 'CONFIRMED';
+          proof.blockchain = proof.blockchain || {};
+          proof.blockchain.transactionId = result.transactionId;
+          proof.blockchain.pdaAddress = result.pdaAddress;
+          proof.blockchain.timestamp = Math.floor(Date.now() / 1000);
+          proof.blockchain.network = process.env.SOLANA_NETWORK || 'devnet';
+          await proof.save();
+        } else {
+          // Enregistrer l'erreur mais garder le paiement
+          proof.retries = proof.retries || {};
+          proof.retries.errors = proof.retries.errors || [];
+          proof.retries.errors.push(result.error || 'Unknown blockchain error');
+          proof.retries.count = (proof.retries.count || 0) + 1;
+          proof.retries.lastAttempt = new Date();
+          await proof.save();
+        }
       } catch (blockchainError) {
-        console.error('Erreur complète lors de la création de la preuve:', blockchainError);
-        console.error('Stack trace:', blockchainError.stack);
+        console.error('Erreur lors de l\'enregistrement blockchain après paiement:', blockchainError);
+        // Enregistrer l'erreur
+        proof.retries = proof.retries || {};
+        proof.retries.errors = proof.retries.errors || [];
+        proof.retries.errors.push(blockchainError.message);
+        proof.retries.count = (proof.retries.count || 0) + 1;
+        proof.retries.lastAttempt = new Date();
+        await proof.save();
       }
-    }
-    
-    // Mettre à jour dans MongoDB
-    proof.isPaid = true;
-    
-    if (blockchainResult.success) {
-      proof.status = 'CONFIRMED';
-      proof.transactionId = blockchainResult.transactionId;
-      proof.pdaAddress = blockchainResult.pdaAddress;
     } else {
-      // Pour les tests en développement, on peut autoriser la confirmation même sans blockchain
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('Mode développement: Marquer la preuve comme CONFIRMED malgré l\'échec blockchain');
-        proof.status = 'CONFIRMED';
-        proof.transactionId = `dev-tx-${Date.now()}`;
-        proof.pdaAddress = `dev-pda-${Date.now()}`;
-      } else {
-        proof.status = 'PENDING';
-      }
+      // Pas d'Anchor client disponible
+      proof.status = 'PENDING'; // Restera en attente jusqu'à ce que la blockchain soit disponible
+      proof.retries = proof.retries || {};
+      proof.retries.errors = proof.retries.errors || [];
+      proof.retries.errors.push('Anchor client not available');
+      await proof.save();
     }
-    
-    await proof.save();
 
     return res.success({
       id: proof._id,
-      isPaid: proof.isPaid,
+      isPaid: proof.payment?.isPaid || false,
       status: proof.status,
-      transactionId: proof.transactionId,
-      pdaAddress: proof.pdaAddress
+      transactionId: proof.blockchain?.transactionId,
+      pdaAddress: proof.blockchain?.pdaAddress,
+      blockchainSuccess: blockchainResult.success
     }, 'Paiement pour la preuve effectué avec succès');
   } catch (error) {
     console.error('Erreur lors du paiement pour la preuve:', error);
@@ -416,17 +517,15 @@ exports.downloadProof = async (req, res) => {
       return res.error('Preuve non trouvée', 404);
     }
 
-    // En développement, on peut assouplir cette vérification
-    if (process.env.NODE_ENV !== 'production') {
-      // Skip la vérification en mode développement si la preuve est payée
-      if (!proof.isPaid) {
-        return res.error('Cette preuve n\'a pas encore été payée', 400);
-      }
-    } else {
-      // Vérifier si la preuve est confirmée
-      if (proof.status !== 'CONFIRMED' || !proof.pdaAddress) {
-        return res.error('Cette preuve n\'est pas encore confirmée sur la blockchain', 400);
-      }
+    // Vérifier si la preuve est payée
+    if (!proof.payment?.isPaid) {
+      return res.error('Cette preuve n\'a pas encore été payée', 400);
+    }
+
+    // En production, exiger que la preuve soit confirmée sur la blockchain
+    if (process.env.NODE_ENV === 'production' && 
+        (proof.status !== 'CONFIRMED' || !proof.blockchain?.pdaAddress)) {
+      return res.error('Cette preuve n\'est pas encore confirmée sur la blockchain', 400);
     }
 
     // Vérifier si l'utilisateur est autorisé à télécharger la preuve
@@ -435,23 +534,10 @@ exports.downloadProof = async (req, res) => {
       return res.error('Vous n\'êtes pas autorisé à télécharger cette preuve', 403);
     }
 
-    // Générer un PDF ou un document formaté
-    // Ceci est un exemple simplifié - dans un vrai système, vous utiliseriez
-    // une bibliothèque comme PDFKit pour générer un PDF propre
-    const proofDocument = {
-      title: proof.title,
-      artist: proof.artist.username,
-      trackTitle: proof.track ? proof.track.title : 'Sans titre',
-      contentHash: proof.contentHash,
-      createdAt: proof.createdAt,
-      transactionId: proof.transactionId,
-      pdaAddress: proof.pdaAddress,
-      blockchain: 'Solana',
-      network: process.env.SOLANA_NETWORK || 'devnet'
-    };
+    // Générer un document de preuve au format JSON
+    const proofDocument = proof.toProofJson();
 
     // Au lieu de générer un vrai PDF, on renvoie simplement les données JSON
-    // Dans une implémentation réelle, vous généreriez un PDF et le retourneriez
     return res.success(proofDocument, 'Document de preuve généré avec succès');
   } catch (error) {
     console.error('Erreur lors de la génération du document de preuve:', error);

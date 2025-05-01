@@ -1,147 +1,159 @@
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
-const ProofSchema = new mongoose.Schema({
+// Schéma pour la preuve de création d'un fichier audio
+const ProofSchema = new Schema({
+  // ID fonctionnel de la preuve (pour l'API externe)
   proofId: {
     type: String,
-    required: [true, 'Proof ID is required'],
-    unique: true,
-    trim: true,
-    index: true
+    required: true,
+    unique: true
   },
+  
+  // Piste audio associée (référence à Track)
   track: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'Track',
-    required: [true, 'Track reference is required'],
-    index: true
+    required: true
   },
+  
+  // Artiste qui a créé la preuve (référence à User)
   artist: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Artist reference is required'],
-    index: true
+    required: true
   },
+  
+  // Clé publique Solana de l'artiste
   artistPublicKey: {
     type: String,
-    required: [true, 'Artist public key is required']
+    required: true
   },
+  
+  // Titre de la preuve
   title: {
     type: String,
-    required: [true, 'Title is required'],
-    trim: true,
-    maxlength: [100, 'Title cannot exceed 100 characters']
+    required: true
   },
+  
+  // Hash SHA-256 du contenu du fichier
   contentHash: {
     type: String,
-    required: [true, 'Content hash is required'],
-    index: true
+    required: true
   },
-  metadata: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {}
+  
+  // Statut de la preuve (PENDING, CONFIRMED, REJECTED)
+  status: {
+    type: String,
+    enum: ['PENDING', 'CONFIRMED', 'REJECTED'],
+    default: 'PENDING'
   },
+  
+  // Informations de la blockchain
   blockchain: {
+    // Adresse PDA sur la blockchain
     pdaAddress: {
       type: String,
       default: null
     },
+    
+    // ID de la transaction sur la blockchain
     transactionId: {
       type: String,
-      default: null,
-      sparse: true,
-      index: true
+      default: null
     },
+    
+    // Réseau de la blockchain (devnet, mainnet)
     network: {
       type: String,
-      default: 'devnet',
-      enum: ['devnet', 'testnet', 'mainnet']
+      default: 'devnet'
     },
+    
+    // Timestamp de la transaction
     timestamp: {
       type: Number,
       default: null
     }
   },
-  status: {
-    type: String,
-    enum: ['PENDING', 'CONFIRMED', 'FAILED', 'REVOKED'],
-    default: 'PENDING',
-    index: true
-  },
+  
+  // Informations de paiement
   payment: {
+    // Coût de la preuve (0 pour la première)
     cost: {
       type: Number,
       default: 0
     },
+    
+    // Si la preuve a été payée
     isPaid: {
       type: Boolean,
       default: false
     },
+    
+    // Méthode de paiement (FREE, SOL, CREDIT)
     paymentMethod: {
       type: String,
-      enum: ['SOL', 'CREDIT', 'FREE', 'NONE'],
+      enum: ['NONE', 'FREE', 'SOL', 'CREDIT'],
       default: 'NONE'
     }
   },
-  version: {
-    type: Number,
-    default: 1
-  },
+  
+  // Informations de nouvelles tentatives (en cas d'échec)
   retries: {
+    // Nombre de tentatives
     count: {
       type: Number,
       default: 0
     },
-    lastAttempt: Date,
-    errors: [String]
+    
+    // Dernière tentative
+    lastAttempt: {
+      type: Date,
+      default: null
+    },
+    
+    // Erreurs rencontrées
+    errors: {
+      type: [String],
+      default: []
+    }
+  },
+  
+  // Numéro de version (pour les preuves multiples d'une même piste)
+  version: {
+    type: Number,
+    default: 1
   }
 }, {
   timestamps: true
 });
 
-// Format proof for download
+// Méthode pour convertir la preuve en JSON formaté pour le document de preuve
 ProofSchema.methods.toProofJson = function() {
   return {
-    proof_id: this.proofId,
-    artist_id: this.artistPublicKey,
-    track_hash: this.contentHash,
-    track_id: this.track.toString(),
-    track_title: this.title,
-    timestamp: {
-      unix: this.blockchain.timestamp || Math.floor(this.createdAt.getTime() / 1000),
-      iso: this.createdAt.toISOString()
+    proofId: this.proofId,
+    title: this.title,
+    contentHash: this.contentHash,
+    createdAt: this.createdAt,
+    version: this.version,
+    artist: {
+      id: this.artist._id || this.artist,
+      username: this.artist.username || 'Artist',
+      publicKey: this.artistPublicKey
+    },
+    track: {
+      id: this.track._id || this.track,
+      title: this.track.title || 'Track'
     },
     blockchain: {
-      address: this.blockchain.pdaAddress,
-      transaction_id: this.blockchain.transactionId,
-      network: this.blockchain.network
+      network: this.blockchain.network,
+      transactionId: this.blockchain.transactionId,
+      pdaAddress: this.blockchain.pdaAddress,
+      timestamp: this.blockchain.timestamp
     },
     status: this.status,
-    version: this.version
+    verified: this.status === 'CONFIRMED' && this.blockchain.pdaAddress !== null
   };
-};
-
-// Update blockchain status
-ProofSchema.methods.updateBlockchainStatus = async function(transactionId, pdaAddress = null, timestamp = null) {
-  this.blockchain.transactionId = transactionId;
-  if (pdaAddress) this.blockchain.pdaAddress = pdaAddress;
-  this.blockchain.timestamp = timestamp || Math.floor(Date.now() / 1000);
-  this.status = 'CONFIRMED';
-  return this.save();
-};
-
-// Log failed attempt
-ProofSchema.methods.logFailure = async function(error) {
-  this.retries.count += 1;
-  this.retries.lastAttempt = new Date();
-  if (error) {
-    if (!this.retries.errors) this.retries.errors = [];
-    this.retries.errors.push(error.toString().substring(0, 500)); // Limit error length
-  }
-  
-  if (this.retries.count >= 3) {
-    this.status = 'FAILED';
-  }
-  
-  return this.save();
 };
 
 module.exports = mongoose.model('Proof', ProofSchema);

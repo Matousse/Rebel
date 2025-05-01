@@ -1,20 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const proofController = require('./proofController');
+const { protect, artistOnly } = require('../../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
-
-const {
-  createProof,
-  getProofById,
-  getProofsByTrackId,
-  getProofsByArtistId,
-  verifyProof,
-  payForProof,
-  downloadProof,
-  getMyProofs
-} = require('./proofController');
-
-const { protect, artistOnly } = require('../../middleware/authMiddleware');
 
 // Configuration de multer pour le téléchargement de fichiers audio
 const storage = multer.diskStorage({
@@ -56,44 +45,44 @@ router.post(
   protect,
   artistOnly,
   upload.single('audioFile'),
-  createProof
+  proofController.createProof
 );
 
 // Récupération d'une preuve par ID
-router.get('/:id', getProofById);
+router.get('/:id', proofController.getProofById);
 
 // Récupération des preuves par piste
-router.get('/track/:trackId', getProofsByTrackId);
+router.get('/track/:trackId', proofController.getProofsByTrackId);
 
 // Récupération des preuves par artiste
-router.get('/artist/:artistId', getProofsByArtistId);
+router.get('/artist/:artistId', proofController.getProofsByArtistId);
 
 // Vérification d'une preuve
 router.post(
   '/verify/:id',
   upload.single('audioFile'),
-  verifyProof
+  proofController.verifyProof
 );
 
 // Paiement pour une preuve
 router.post(
   '/pay/:id',
   protect,
-  payForProof
+  proofController.payForProof
 );
 
 // Téléchargement d'un document de preuve
 router.get(
   '/download/:id',
   protect,
-  downloadProof
+  proofController.downloadProof
 );
 
 // Récupération des preuves de l'utilisateur connecté
 router.get(
   '/user/me',
   protect,
-  getMyProofs
+  proofController.getMyProofs
 );
 
 module.exports = router;
