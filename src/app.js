@@ -6,7 +6,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const { v4: uuidv4 } = require('uuid');
-
+const proofRoutes = require('./modules/proof/proofRoutes');
+const trackRoutes = require('./modules/tracks/trackRoutes')
+const responseMiddleware = require('./middleware/responseMiddleware');
 // Load environment variables
 dotenv.config();
 
@@ -29,6 +31,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cors());
 app.use(helmet()); // HTTP Security
+app.use(responseMiddleware);
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
@@ -39,7 +42,7 @@ app.use('/play', express.static(path.join(__dirname, 'modules/play')));
 // API Routes
 app.use('/api/users', userRoutes);
 app.use('/api/magic', magicRoutes); // Utilisation des routes Magic
-
+app.use('/api/tracks', trackRoutes); 
 // Root route
 app.get('/', (req, res) => {
   res.success({ name: 'Rebellion Music API', version: '1.0.0' }, 'Welcome to the Rebellion music platform API');
@@ -56,6 +59,7 @@ app.get('/api/status', (req, res) => {
 
 // Ajouter les routes API pour proofs
 app.use('/api/proofs', proofRoutes);
+
 // Account Abstraction Status route
 app.get('/api/aa-status', (req, res) => {
   try {
