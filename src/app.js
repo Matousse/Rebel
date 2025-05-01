@@ -19,56 +19,26 @@ const { successResponse, errorResponse } = require('./utils/responseUtils');
 
 // Import module routes
 const userRoutes = require('./modules/user/userRoutes');
-const magicRoutes = require('./modules/magic/magicRoutes');
-const trackRoutes = require('./modules/tracks/trackRoutes');
-// Importer les routes de proof
-const proofRoutes = require('./modules/proof/proofRoutes');
-
-
+const magicRoutes = require('./modules/magic/magicRoutes'); // Ajout des routes Magic
 
 // Initialize Express application
 const app = express();
 
-// Base middleware
-app.use(helmet()); // HTTP Security
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 app.use(cors());
-
-// Request ID middleware for tracking
-app.use((req, res, next) => {
-  req.id = uuidv4();
-  res.setHeader('X-Request-ID', req.id);
-  next();
-});
-
-// Logging middleware
-app.use(morgan('dev'));
-
-// Body parsers
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: false, limit: '2mb' }));
-
-// Add response helpers to all routes
-app.use((req, res, next) => {
-  // Success response helper
-  res.success = function(data = null, message = 'Success', statusCode = 200, meta = null) {
-    return successResponse(res, statusCode, message, data, meta);
-  };
-  
-  // Error response helper
-  res.error = function(message = 'Error', statusCode = 500, errors = null) {
-    return errorResponse(res, statusCode, message, errors);
-  };
-  
-  next();
-});
+app.use(helmet()); // HTTP Security
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
+// Serve Play module static files
+app.use('/play', express.static(path.join(__dirname, 'modules/play')));
+
 // API Routes
 app.use('/api/users', userRoutes);
-app.use('/api/magic', magicRoutes);
-app.use('/api/tracks', trackRoutes);
+app.use('/api/magic', magicRoutes); // Utilisation des routes Magic
 
 // Root route
 app.get('/', (req, res) => {
