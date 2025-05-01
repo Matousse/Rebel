@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Magic } from 'magic-sdk'; // Import Magic SDK
+import { OAuthExtension } from '@magic-ext/oauth';
 
 // Icons
 import { Music, Upload, Shield, User, LogOut, LogIn, Award, HelpCircle, Home } from 'lucide-react';
@@ -13,47 +15,55 @@ function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [error, setError] = useState('');
 
-  // Initialiser Magic SDK et vérifier l'état de l'utilisateur
+  // Initialize Magic SDK and check user state
   useEffect(() => {
     const initMagic = async () => {
       try {
-        // En production, utilisez une variable d'environnement
-        const magic = new window.Magic('pk_live_DAE97419AE6EBC48');
+        // Initialize Magic with your publishable key
+        // Make sure to install magic-sdk via npm first
+        const magic = new Magic('pk_live_DAE97419AE6EBC48', {
+          extensions: []
+        });
         setMagicSDK(magic);
         
-        // Vérifier si l'utilisateur est connecté
+        // Check if user is logged in
         const isLoggedIn = await magic.user.isLoggedIn();
         
         if (isLoggedIn) {
-          const userMetadata = await magic.user.getMetadata();
-          const token = localStorage.getItem('token');
-          
-          if (token) {
-            // Récupérer le profil utilisateur depuis l'API
-            try {
-              const response = await fetch('http://localhost:5001/api/users/profile', {
-                headers: {
-                  'Authorization': `Bearer ${token}`
+          // Get user metadata from Magic
+          try {
+            const metadata = await magic.user.getInfo();
+            const token = localStorage.getItem('token');
+            
+            if (token) {
+              // Fetch user profile from API
+              try {
+                const response = await fetch('http://localhost:5001/api/users/profile', {
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                
+                if (response.ok) {
+                  const userData = await response.json();
+                  if (userData.success) {
+                    setUser({
+                      ...userData.data,
+                      token
+                    });
+                    console.log('User authenticated:', userData.data);
+                  }
+                } else {
+                  // Invalid token, remove it
+                  localStorage.removeItem('token');
                 }
-              });
-              
-              if (response.ok) {
-                const userData = await response.json();
-                if (userData.success) {
-                  setUser({
-                    ...userData.data,
-                    token
-                  });
-                  console.log('User authenticated:', userData.data);
-                }
-              } else {
-                // Token invalide, le supprimer
+              } catch (error) {
+                console.error('Error fetching user profile:', error);
                 localStorage.removeItem('token');
               }
-            } catch (error) {
-              console.error('Error fetching user profile:', error);
-              localStorage.removeItem('token');
             }
+          } catch (metadataError) {
+            console.error('Error getting user metadata:', metadataError);
           }
         }
       } catch (error) {
@@ -67,7 +77,7 @@ function App() {
     initMagic();
   }, []);
 
-  // Se déconnecter
+  // Logout user
   const handleLogout = async () => {
     if (magicSDK) {
       try {
@@ -82,7 +92,7 @@ function App() {
     }
   };
 
-  // Fonction pour afficher la page actuelle
+  // Render current page
   const renderPage = () => {
     switch(currentPage) {
       case 'login':
@@ -145,7 +155,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header avec navigation */}
+      {/* Header with navigation */}
       <header className="bg-gray-800 p-4">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold text-violet-500">REBEL</h1>
@@ -212,7 +222,7 @@ function App() {
         )}
       </main>
 
-      {/* Messages d'erreur */}
+      {/* Error messages */}
       {error && (
         <div className="fixed top-4 right-4 bg-red-900 text-white p-4 rounded-lg shadow-lg">
           {error}
@@ -227,119 +237,118 @@ function App() {
     </div>
   );
 }
-
-// Page d'accueil
+// HomePage component
 function HomePage({ user, navigateTo }) {
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="text-center mb-12">
-        <h1 className="text-5xl font-bold text-violet-500 mb-4">REBEL</h1>
-        <p className="text-xl text-gray-300">Anti-Algorithm Music Hub</p>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Our Vision</h2>
-          <p className="text-gray-300 mb-4">
-            REBEL is the definitive anti-algorithmic sanctuary for underground music, 
-            where human curation trumps AI recommendations, restoring cultural value and 
-            financial sustainability to authentic electronic and experimental music scenes.
-          </p>
-          <p className="text-gray-300">
-            We rebuild the discovery-to-monetization pipeline through a decentralized ecosystem 
-            where fans, DJs, and micro-labels connect directly, underpinned by transparent Web3 
-            infrastructure.
-          </p>
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold text-violet-500 mb-4">REBEL</h1>
+          <p className="text-xl text-gray-300">Anti-Algorithm Music Hub</p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+          <div className="bg-gray-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Our Vision</h2>
+            <p className="text-gray-300 mb-4">
+              REBEL is the definitive anti-algorithmic sanctuary for underground music, 
+              where human curation trumps AI recommendations, restoring cultural value and 
+              financial sustainability to authentic electronic and experimental music scenes.
+            </p>
+            <p className="text-gray-300">
+              We rebuild the discovery-to-monetization pipeline through a decentralized ecosystem 
+              where fans, DJs, and micro-labels connect directly, underpinned by transparent Web3 
+              infrastructure.
+            </p>
+          </div>
+          
+          <div className="bg-gray-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Get Started</h2>
+            {user ? (
+              <div>
+                <p className="text-gray-300 mb-4">
+                  Welcome, <span className="text-violet-400">{user.username || user.email}</span>!
+                </p>
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => navigateTo('upload')}
+                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <Upload size={16} className="mr-2" />
+                    <span>Upload a new track</span>
+                  </button>
+                  <button 
+                    onClick={() => navigateTo('tracks')}
+                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <Music size={16} className="mr-2" />
+                    <span>Manage your tracks</span>
+                  </button>
+                  <button 
+                    onClick={() => navigateTo('proofs')}
+                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <Shield size={16} className="mr-2" />
+                    <span>View your ownership proofs</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-gray-300 mb-4">
+                  Join the community and start sharing your music with true ownership.
+                </p>
+                <button 
+                  onClick={() => navigateTo('login')}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center">
+                    <LogIn size={16} className="mr-2" />
+                    <span>Login with Magic Link</span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Get Started</h2>
-          {user ? (
-            <div>
-              <p className="text-gray-300 mb-4">
-                Welcome, <span className="text-violet-400">{user.username || user.email}</span>!
-              </p>
-              <div className="space-y-3">
-                <button 
-                  onClick={() => navigateTo('upload')}
-                  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  <Upload size={16} className="mr-2" />
-                  <span>Upload a new track</span>
-                </button>
-                <button 
-                  onClick={() => navigateTo('tracks')}
-                  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  <Music size={16} className="mr-2" />
-                  <span>Manage your tracks</span>
-                </button>
-                <button 
-                  onClick={() => navigateTo('proofs')}
-                  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  <Shield size={16} className="mr-2" />
-                  <span>View your ownership proofs</span>
-                </button>
+          <h2 className="text-xl font-semibold mb-4 text-center">Core Features</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Music size={24} className="text-violet-400" />
               </div>
+              <h3 className="font-medium mb-2">Sonic Map</h3>
+              <p className="text-sm text-gray-400">Visual interface representing music by sonic characteristics</p>
             </div>
-          ) : (
-            <div>
-              <p className="text-gray-300 mb-4">
-                Join the community and start sharing your music with true ownership.
-              </p>
-              <button 
-                onClick={() => navigateTo('login')}
-                className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-              >
-                <div className="flex items-center">
-                  <LogIn size={16} className="mr-2" />
-                  <span>Login with Magic Link</span>
-                </div>
-              </button>
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Upload size={24} className="text-violet-400" />
+              </div>
+              <h3 className="font-medium mb-2">P2P Sharing</h3>
+              <p className="text-sm text-gray-400">Decentralized exchange for rare tracks with provenance verification</p>
             </div>
-          )}
-        </div>
-      </div>
-      
-      <div className="bg-gray-800 p-6 rounded-lg">
-        <h2 className="text-xl font-semibold mb-4 text-center">Core Features</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Music size={24} className="text-violet-400" />
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Award size={24} className="text-violet-400" />
+              </div>
+              <h3 className="font-medium mb-2">Live Crates</h3>
+              <p className="text-sm text-gray-400">Time-limited thematic challenges with community voting</p>
             </div>
-            <h3 className="font-medium mb-2">Sonic Map</h3>
-            <p className="text-sm text-gray-400">Visual interface representing music by sonic characteristics</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Upload size={24} className="text-violet-400" />
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Shield size={24} className="text-violet-400" />
+              </div>
+              <h3 className="font-medium mb-2">Proof of Creation</h3>
+              <p className="text-sm text-gray-400">Blockchain-based timestamp proof for your creative work</p>
             </div>
-            <h3 className="font-medium mb-2">P2P Sharing</h3>
-            <p className="text-sm text-gray-400">Decentralized exchange for rare tracks with provenance verification</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Award size={24} className="text-violet-400" />
-            </div>
-            <h3 className="font-medium mb-2">Live Crates</h3>
-            <p className="text-sm text-gray-400">Time-limited thematic challenges with community voting</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Shield size={24} className="text-violet-400" />
-            </div>
-            <h3 className="font-medium mb-2">Proof of Creation</h3>
-            <p className="text-sm text-gray-400">Blockchain-based timestamp proof for your creative work</p>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-// Page de Login
+// Login Page
 function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -349,7 +358,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isArtist, setIsArtist] = useState(false);
 
-  // Connexion avec Magic Link
+  // Login with Magic Link
   const handleMagicLogin = async (e) => {
     e.preventDefault();
     
@@ -366,11 +375,11 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
         throw new Error('Authentication system not initialized');
       }
       
-      // Obtenir le DID token de Magic
+      // Get DID token from Magic
       await magicSDK.auth.loginWithMagicLink({ email });
       const didToken = await magicSDK.user.getIdToken();
       
-      // Envoyer au backend pour vérification et obtenir un JWT
+      // Send to backend for verification and get JWT
       const response = await fetch('http://localhost:5001/api/magic/auth', {
         method: 'POST',
         headers: {
@@ -402,7 +411,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     }
   };
   
-  // Connexion traditionnelle avec email/password
+  // Traditional login with email/password
   const handleTraditionalLogin = async (e) => {
     e.preventDefault();
     
@@ -415,7 +424,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      // Connexion via méthode JWT traditionnelle
+      // Login via traditional JWT method
       const response = await fetch('http://localhost:5001/api/users/login', {
         method: 'POST',
         headers: {
@@ -443,7 +452,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     }
   };
   
-  // Inscription traditionnelle
+  // Traditional signup
   const handleSignUp = async (e) => {
     e.preventDefault();
     
@@ -456,7 +465,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      // Inscription via méthode traditionnelle
+      // Sign up via traditional method
       const response = await fetch('http://localhost:5001/api/users/register', {
         method: 'POST',
         headers: {
@@ -503,7 +512,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
         )}
         
         {isSignUp ? (
-          // Formulaire d'inscription
+          // Sign up form
           <form onSubmit={handleSignUp}>
             <div className="mb-4">
               <label className="block text-gray-300 mb-2">Email</label>
@@ -575,7 +584,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
             </div>
           </form>
         ) : (
-          // Formulaire de connexion
+          // Login form
           <div>
             <div className="mb-6">
               <button 
@@ -982,7 +991,7 @@ function TracksPage({ user, onBack }) {
 
   const fetchTracks = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/tracks', {
+      const response = await fetch('http://localhost:5001/api/tracks/user', {
         headers: {
           'Authorization': `Bearer ${user.token}`
         }
@@ -991,7 +1000,8 @@ function TracksPage({ user, onBack }) {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setTracks(data.data);
+          // Check how the data is structured - if it's inside data.data or directly in data
+          setTracks(Array.isArray(data.data) ? data.data : data.data.tracks || []);
         } else {
           setError(data.message || 'Failed to fetch tracks');
         }
@@ -1119,231 +1129,241 @@ function TracksPage({ user, onBack }) {
 
 // Upload Page
 function UploadPage({ user, onBack }) {
-  const [formData, setFormData] = useState({
-    title: '',
-    genre: '',
-    description: '',
-    tags: '',
-    isPublic: true
-  });
-  const [audioFile, setAudioFile] = useState(null);
-  const [coverImage, setCoverImage] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  // Vérifier que l'utilisateur est un artiste
-  useEffect(() => {
-    if (!user.isArtist) {
-      setError('You need to be registered as an artist to upload tracks.');
-    }
-  }, [user.isArtist]);
-
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  };
-
-  const handleAudioFileChange = (e) => {
-    setAudioFile(e.target.files[0]);
-  };
-
-  const handleCoverImageChange = (e) => {
-    setCoverImage(e.target.files[0]);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!audioFile) {
-      setError('Please select an audio file');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError('');
-    setSuccess('');
-    
-    try {
-      const uploadData = new FormData();
-      Object.entries(formData).forEach(([key, value]) => {
-        uploadData.append(key, value);
-      });
+    const [formData, setFormData] = useState({
+      title: '',
+      genre: '',
+      description: '',
+      tags: '',
+      isPublic: true
+    });
+    const [audioFile, setAudioFile] = useState(null);
+    const [coverImage, setCoverImage] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+  
+    // Check that user is an artist
+    useEffect(() => {
+      if (!user.isArtist) {
+        setError('You need to be registered as an artist to upload tracks.');
+      }
+    }, [user.isArtist]);
+  
+    const handleChange = (e) => {
+      const { name, value, type, checked } = e.target;
+      setFormData(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      }));
+    };
+  
+    const handleAudioFileChange = (e) => {
+      setAudioFile(e.target.files[0]);
+    };
+  
+    const handleCoverImageChange = (e) => {
+      setCoverImage(e.target.files[0]);
+    };
+  
+    const handleSubmit = async (e) => {
+      e.preventDefault();
       
-      // Convertir la chaîne de tags en array
-      if (formData.tags) {
-        uploadData.delete('tags');
-        formData.tags.split(',').forEach(tag => {
-          uploadData.append('tags', tag.trim());
-        });
+      if (!audioFile) {
+        setError('Please select an audio file');
+        return;
       }
       
-      uploadData.append('audioFile', audioFile);
+      setIsLoading(true);
+      setError('');
+      setSuccess('');
       
-      if (coverImage) {
-        uploadData.append('coverImage', coverImage);
-      }
-      
-      const response = await fetch('http://localhost:5001/api/tracks', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${user.token}`
-        },
-        body: uploadData
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setSuccess('Track uploaded successfully!');
-        setFormData({
-          title: '',
-          genre: '',
-          description: '',
-          tags: '',
-          isPublic: true
-        });
-        setAudioFile(null);
-        setCoverImage(null);
-      } else {
-        throw new Error(data.message || 'Failed to upload track');
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      setError(error.message || 'Failed to upload track. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6 text-violet-500">Upload Track</h1>
-      
-      <div className="bg-gray-800 rounded-lg p-6">
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
+      try {
+        const uploadData = new FormData();
         
-        {success && (
-          <div className="bg-green-900/50 border border-green-500 text-green-300 px-4 py-3 rounded mb-4">
-            {success}
-          </div>
-        )}
+        // Add form data fields
+        uploadData.append('title', formData.title);
+        uploadData.append('genre', formData.genre);
+        uploadData.append('description', formData.description);
+        uploadData.append('isPublic', formData.isPublic);
         
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Title *</label>
-            <input
-              type="text"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-              required
-            />
-          </div>
+        // Convert tags string to array and add them properly
+        if (formData.tags) {
+          const tagsArray = formData.tags.split(',').map(tag => tag.trim());
+          uploadData.append('tags', tagsArray.join(','));
+        }
+        
+        // Add files
+        uploadData.append('audioFile', audioFile);
+        
+        if (coverImage) {
+          uploadData.append('coverImage', coverImage);
+        }
+        
+        console.log('Uploading track with data:', {
+          title: formData.title,
+          genre: formData.genre,
+          hasAudioFile: !!audioFile,
+          hasCoverImage: !!coverImage
+        });
+        
+        const response = await fetch('http://localhost:5001/api/tracks', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+            // Don't set Content-Type with FormData - it will be set automatically
+          },
+          body: uploadData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          setSuccess('Track uploaded successfully!');
+          setFormData({
+            title: '',
+            genre: '',
+            description: '',
+            tags: '',
+            isPublic: true
+          });
+          setAudioFile(null);
+          setCoverImage(null);
+        } else {
+          throw new Error(data.message || 'Failed to upload track');
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        setError(error.message || 'Failed to upload track. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+  
+    return (
+      <div>
+        <h1 className="text-3xl font-bold mb-6 text-violet-500">Upload Track</h1>
+        
+        <div className="bg-gray-800 rounded-lg p-6">
+          {error && (
+            <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
+              {error}
+            </div>
+          )}
           
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Genre *</label>
-            <input
-              type="text"
-              name="genre"
-              value={formData.genre}
-              onChange={handleChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-              required
-            />
-          </div>
+          {success && (
+            <div className="bg-green-900/50 border border-green-500 text-green-300 px-4 py-3 rounded mb-4">
+              {success}
+            </div>
+          )}
           
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Description</label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 h-32"
-            ></textarea>
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Tags (comma separated)</label>
-            <input
-              type="text"
-              name="tags"
-              value={formData.tags}
-              onChange={handleChange}
-              placeholder="electronic, ambient, experimental"
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Audio File *</label>
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={handleAudioFileChange}
-              className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
-              required
-            />
-            <p className="mt-1 text-gray-500 text-xs">
-              Supported formats: MP3, WAV, FLAC, OGG (max 30MB)
-            </p>
-          </div>
-          
-          <div className="mb-6">
-            <label className="block text-gray-300 mb-2">Cover Image (optional)</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleCoverImageChange}
-              className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
-            />
-            <p className="mt-1 text-gray-500 text-xs">
-              Recommended: 800x800 JPG or PNG (max 2MB)
-            </p>
-          </div>
-          
-          <div className="mb-6">
-            <label className="flex items-center">
-              <input 
-                type="checkbox"
-                name="isPublic"
-                checked={formData.isPublic}
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Title *</label>
+              <input
+                type="text"
+                name="title"
+                value={formData.title}
                 onChange={handleChange}
-                className="rounded border-gray-600 text-violet-600 focus:ring-violet-500 h-4 w-4 bg-gray-700"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                required
               />
-              <span className="ml-2 text-gray-300">Make this track public</span>
-            </label>
-          </div>
-          
-          <div className="flex space-x-4">
-            <button
-              type="submit"
-              disabled={isLoading || !user.isArtist}
-              className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-            >
-              {isLoading ? 'Uploading...' : 'Upload Track'}
-            </button>
-            <button
-              type="button"
-              onClick={onBack}
-              className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              Back
-            </button>
-          </div>
-        </form>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Genre *</label>
+              <input
+                type="text"
+                name="genre"
+                value={formData.genre}
+                onChange={handleChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                required
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Description</label>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 h-32"
+              ></textarea>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Tags (comma separated)</label>
+              <input
+                type="text"
+                name="tags"
+                value={formData.tags}
+                onChange={handleChange}
+                placeholder="electronic, ambient, experimental"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Audio File *</label>
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={handleAudioFileChange}
+                className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
+                required
+              />
+              <p className="mt-1 text-gray-500 text-xs">
+                Supported formats: MP3, WAV, FLAC, OGG (max 30MB)
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-gray-300 mb-2">Cover Image (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleCoverImageChange}
+                className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
+              />
+              <p className="mt-1 text-gray-500 text-xs">
+                Recommended: 800x800 JPG or PNG (max 2MB)
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <label className="flex items-center">
+                <input 
+                  type="checkbox"
+                  name="isPublic"
+                  checked={formData.isPublic}
+                  onChange={handleChange}
+                  className="rounded border-gray-600 text-violet-600 focus:ring-violet-500 h-4 w-4 bg-gray-700"
+                />
+                <span className="ml-2 text-gray-300">Make this track public</span>
+              </label>
+            </div>
+            
+            <div className="flex space-x-4">
+              <button
+                type="submit"
+                disabled={isLoading || !user.isArtist}
+                className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isLoading ? 'Uploading...' : 'Upload Track'}
+              </button>
+              <button
+                type="button"
+                onClick={onBack}
+                className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+              >
+                Back
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 // Proofs Page
 function ProofsPage({ user, onBack }) {
