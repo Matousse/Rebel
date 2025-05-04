@@ -980,152 +980,210 @@ function ProfilePage({ user, setUser, onBack }) {
 }
 
 // Page Tracks
-function TracksPage({ user, onBack }) {
-  const [tracks, setTracks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchTracks();
-  }, []);
-
-  const fetchTracks = async () => {
-    try {
-      const response = await fetch('http://localhost:5001/api/tracks/user', {
-        headers: {
-          'Authorization': `Bearer ${user.token}`
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          // Check how the data is structured - if it's inside data.data or directly in data
-          setTracks(Array.isArray(data.data) ? data.data : data.data.tracks || []);
+function TracksPage({ user, onBack, navigateTo }) {
+    const [tracks, setTracks] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(false); // For proof creation
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [activeTrackId, setActiveTrackId] = useState(null); // Track which proof is being created
+  
+    useEffect(() => {
+      fetchTracks();
+    }, []);
+  
+    const fetchTracks = async () => {
+      try {
+        const response = await fetch('http://localhost:5001/api/tracks/user', {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setTracks(Array.isArray(data.data) ? data.data : data.data.tracks || []);
+          } else {
+            setError(data.message || 'Failed to fetch tracks');
+          }
         } else {
-          setError(data.message || 'Failed to fetch tracks');
+          setError('Failed to fetch tracks');
         }
-      } else {
-        setError('Failed to fetch tracks');
+      } catch (error) {
+        console.error('Error fetching tracks:', error);
+        setError(error.message || 'Failed to fetch tracks');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching tracks:', error);
-      setError(error.message || 'Failed to fetch tracks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-violet-500">My Tracks</h1>
-        <button
-          onClick={() => window.location.href = '/api/upload'}
-          className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center"
-        >
-          <Upload size={18} className="mr-2" />
-          Upload New Track
-        </button>
-      </div>
+    };
+  
+    const handleCreateProof = async (trackId, e) => {
+      // Prevent any default browser behavior
+      if (e) e.preventDefault();
       
-      {error && (
-        <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
+      // Set the active track ID to show loading state on the specific button
+      setActiveTrackId(trackId);
+      setIsLoading(true);
+      setError('');
+      setSuccess('');
       
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-12 h-12 border-4 border-dashed rounded-full animate-spin border-violet-600"></div>
+      try {
+        console.log(`Creating proof for track: ${trackId}`);
+        
+        const response = await fetch(`http://localhost:5001/api/tracks/${trackId}/proof`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${user.token}`,
+            'Content-Type': 'application/json'
+          },
+          // No body needed for this request
+        });
+        
+        const data = await response.json();
+        console.log('Proof creation response:', data);
+        
+        if (data.success) {
+          setSuccess(`Proof created successfully for track: ${trackId}`);
+          // Don't navigate away - stay on the current page
+        } else {
+          setError(data.message || 'Failed to create proof');
+        }
+      } catch (error) {
+        console.error('Error creating proof:', error);
+        setError(error.message || 'Failed to create proof');
+      } finally {
+        setIsLoading(false);
+        setActiveTrackId(null);
+      }
+    };
+  
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-violet-500">My Tracks</h1>
+          <button
+            onClick={() => navigateTo('upload')}
+            className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center"
+          >
+            <Upload size={18} className="mr-2" />
+            Upload New Track
+          </button>
         </div>
-      ) : tracks.length > 0 ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {tracks.map(track => (
-            <div key={track._id} className="bg-gray-800 rounded-lg overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-start">
-                  <div className="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center mr-4 flex-shrink-0">
-                    <Music size={20} className="text-violet-400" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-medium text-lg">{track.title}</h3>
-                    <p className="text-gray-400 text-sm">
-                      {track.genre} • {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
-                    </p>
-                    <p className="text-gray-500 text-sm mt-1">
-                      Uploaded {new Date(track.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-                
-                {track.description && (
-                  <p className="text-gray-300 mt-3 text-sm">{track.description}</p>
-                )}
-                
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {track.tags && track.tags.map(tag => (
-                    <span key={tag} className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-center text-gray-400 text-sm">
-                    <span className="mr-4">{track.plays || 0} plays</span>
+        
+        {error && (
+          <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
+            {error}
+          </div>
+        )}
+        
+        {success && (
+          <div className="bg-green-900/50 border border-green-500 text-green-300 px-4 py-3 rounded mb-4">
+            {success}
+          </div>
+        )}
+        
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-12 h-12 border-4 border-dashed rounded-full animate-spin border-violet-600"></div>
+          </div>
+        ) : tracks.length > 0 ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {tracks.map(track => (
+              <div key={track._id} className="bg-gray-800 rounded-lg overflow-hidden">
+                <div className="p-6">
+                  <div className="flex items-start">
+                    <div className="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center mr-4 flex-shrink-0">
+                      <Music size={20} className="text-violet-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-lg">{track.title}</h3>
+                      <p className="text-gray-400 text-sm">
+                        {track.genre} • {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
+                      </p>
+                      <p className="text-gray-500 text-sm mt-1">
+                        Uploaded {new Date(track.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
                   
-                  <div className="flex space-x-2">
-                    <a 
-                      href={`http://localhost:5001/uploads/tracks/${track.audioFile}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-1 px-3 rounded transition-colors"
-                    >
-                      Play
-                    </a>
-                    <button 
-                      onClick={() => window.location.href = `/tracks/${track._id}/proof`}
-                      className="bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 text-sm font-medium py-1 px-3 rounded transition-colors flex items-center"
-                    >
-                      <Shield size={14} className="mr-1" />
-                      Create Proof
-                    </button>
+                  {track.description && (
+                    <p className="text-gray-300 mt-3 text-sm">{track.description}</p>
+                  )}
+                  
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {track.tags && track.tags.map(tag => (
+                      <span key={tag} className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center text-gray-400 text-sm">
+                      <span className="mr-4">{track.plays || 0} plays</span>
+                    </div>
+                    
+                    <div className="flex space-x-2">
+                      <a 
+                        href={`http://localhost:5001/uploads/tracks/${track.audioFile}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-1 px-3 rounded transition-colors"
+                      >
+                        Play
+                      </a>
+                      <button 
+                        onClick={(e) => handleCreateProof(track._id, e)}
+                        disabled={isLoading && activeTrackId === track._id}
+                        className="bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 text-sm font-medium py-1 px-3 rounded transition-colors flex items-center disabled:opacity-50"
+                      >
+                        {isLoading && activeTrackId === track._id ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-dashed rounded-full animate-spin border-violet-400 mr-2"></div>
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <Shield size={14} className="mr-1" />
+                            Create Proof
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="bg-gray-800 rounded-lg p-8 text-center">
-          <Music size={48} className="text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-medium mb-2">No tracks yet</h3>
-          <p className="text-gray-400 mb-6">
-            You haven't uploaded any tracks yet. Upload your first track to get started.
-          </p>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-gray-800 rounded-lg p-8 text-center">
+            <Music size={48} className="text-gray-600 mx-auto mb-4" />
+            <h3 className="text-xl font-medium mb-2">No tracks yet</h3>
+            <p className="text-gray-400 mb-6">
+              You haven't uploaded any tracks yet. Upload your first track to get started.
+            </p>
+            <button
+              onClick={() => navigateTo('upload')}
+              className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors inline-flex items-center"
+            >
+              <Upload size={18} className="mr-2" />
+              Upload First Track
+            </button>
+          </div>
+        )}
+        
+        <div className="mt-6">
           <button
-            onClick={() => window.location.href = '/upload'}
-            className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors inline-flex items-center"
+            onClick={onBack}
+            className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
           >
-            <Upload size={18} className="mr-2" />
-            Upload First Track
+            Back
           </button>
         </div>
-      )}
-      
-      <div className="mt-6">
-        <button
-          onClick={onBack}
-          className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-        >
-          Back
-        </button>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 // Upload Page
 function UploadPage({ user, onBack }) {
