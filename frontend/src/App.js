@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Magic } from 'magic-sdk'; // Import Magic SDK
 import { OAuthExtension } from '@magic-ext/oauth';
+import FeedPage from './pages/FeedPage';
+import TrackProofButton from './components/TrackProofButton';
 
 // Icons
 import { Music, Upload, Shield, User, LogOut, LogIn, Award, HelpCircle, Home } from 'lucide-react';
@@ -135,17 +137,32 @@ function App() {
             navigateTo={setCurrentPage}
           />
         );
-      case 'proofs':
-        return user ? (
-          <ProofsPage user={user} onBack={() => setCurrentPage('home')} />
-        ) : (
-          <LoginPage 
-            onBack={() => setCurrentPage('home')} 
-            magicSDK={magicSDK} 
-            setUser={setUser} 
-            navigateTo={setCurrentPage}
-          />
-        );
+        case 'proofs':
+      return user ? (
+        <ProofsPage 
+          user={user} 
+          onBack={() => setCurrentPage('home')} 
+          navigateTo={setCurrentPage}
+        />
+      ) : (
+        <LoginPage 
+          onBack={() => setCurrentPage('home')} 
+          magicSDK={magicSDK} 
+          setUser={setUser} 
+          navigateTo={setCurrentPage}
+        />
+      );
+        case 'feed':
+          return user ? (
+            <FeedPage user={user} navigateTo={setCurrentPage} />
+          ) : (
+            <LoginPage 
+              onBack={() => setCurrentPage('home')} 
+              magicSDK={magicSDK} 
+              setUser={setUser} 
+              navigateTo={setCurrentPage}
+            />
+          );
       case 'help':
         return <HelpPage onBack={() => setCurrentPage('home')} />;
       default:
@@ -166,6 +183,12 @@ function App() {
             >
               Home
             </button>
+            <button 
+  onClick={() => setCurrentPage('feed')}
+  className="text-gray-300 hover:text-white"
+>
+  Feed
+</button>
             {user ? (
               <>
                 <button 
@@ -245,6 +268,13 @@ function HomePage({ user, navigateTo }) {
           <h1 className="text-5xl font-bold text-violet-500 mb-4">REBEL</h1>
           <p className="text-xl text-gray-300">Anti-Algorithm Music Hub</p>
         </div>
+        <button 
+  onClick={() => navigateTo('feed')}
+  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+>
+  <Home size={16} className="mr-2" />
+  <span>Explore the Feed</span>
+</button>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
           <div className="bg-gray-800 p-6 rounded-lg">
@@ -1017,6 +1047,7 @@ function TracksPage({ user, onBack, navigateTo }) {
         setLoading(false);
       }
     };
+    
   
     const handleCreateProof = async (trackId, e) => {
       // Prevent any default browser behavior
@@ -1133,23 +1164,13 @@ function TracksPage({ user, onBack, navigateTo }) {
                       >
                         Play
                       </a>
-                      <button 
-                        onClick={(e) => handleCreateProof(track._id, e)}
-                        disabled={isLoading && activeTrackId === track._id}
-                        className="bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 text-sm font-medium py-1 px-3 rounded transition-colors flex items-center disabled:opacity-50"
-                      >
-                        {isLoading && activeTrackId === track._id ? (
-                          <>
-                            <div className="w-3 h-3 border-2 border-dashed rounded-full animate-spin border-violet-400 mr-2"></div>
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <Shield size={14} className="mr-1" />
-                            Create Proof
-                          </>
-                        )}
-                      </button>
+                      <TrackProofButton 
+                      trackId={track._id}
+                      user={user}
+                      onSuccess={(proofData) => {
+                        setSuccess(`Proof created successfully for track: ${track._id}`);
+                      }}
+/>
                     </div>
                   </div>
                 </div>
@@ -1425,39 +1446,58 @@ function UploadPage({ user, onBack }) {
 
 // Proofs Page
 function ProofsPage({ user, onBack }) {
-    const [proofs, setProofs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-  
-    useEffect(() => {
-      fetchProofs();
-    }, []);
-  
-    const fetchProofs = async () => {
-      try {
-        const response = await fetch('http://localhost:5001/api/proofs/user/me', {
-          headers: {
-            'Authorization': `Bearer ${user.token}`
-          }
-        });
+  const [proofs, setProofs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchProofs();
+  }, []);
+
+  const fetchProofs = async () => {
+    try {
+      console.log("Attempting to fetch proofs with token:", user.token ? "Token exists" : "No token");
+      
+      const response = await fetch('http://localhost:5001/api/proofs/user/me', {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+      
+      console.log("Proofs API response status:", response.status);
+      console.log("Current user ID:", user._id || user.id);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Proofs data:", data);
         
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setProofs(data.data.proofs || []);
+        // In your fetchProofs function:
+        if (data.success) {
+          console.log("Complete data structure:", data);
+          
+          // Check the structure of data.data
+          if (data.data && data.data.proofs) {
+            setProofs(data.data.proofs);
+            console.log("Found proofs:", data.data.proofs.length);
+          } else if (data.data && Array.isArray(data.data)) {
+            // In case proofs are directly in data.data as an array
+            setProofs(data.data);
+            console.log("Found proofs (direct array):", data.data.length);
           } else {
-            setError(data.message || 'Failed to fetch proofs');
+            console.error("Unexpected data structure:", data.data);
+            setProofs([]);
           }
         } else {
-          setError('Failed to fetch proofs');
+          setError(data.message || 'Failed to fetch proofs');
         }
-      } catch (error) {
-        console.error('Error fetching proofs:', error);
-        setError(error.message || 'Failed to fetch proofs');
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching proofs (details):', error);
+      setError(error.message || 'Failed to fetch proofs');
+    } finally {
+      setLoading(false);
+    }
+  };
   
     const payForProof = async (proofId) => {
       try {

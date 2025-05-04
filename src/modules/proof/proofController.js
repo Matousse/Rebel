@@ -251,19 +251,23 @@ exports.getProofsByArtistId = async (req, res) => {
 // @desc    Obtenir les preuves de l'utilisateur connecté
 // @route   GET /api/proofs/user/me
 // @access  Private
+// In your proofController.js
 exports.getMyProofs = async (req, res) => {
   try {
+    console.log("Looking for proofs for user ID:", req.user.id);
+    
     const proofs = await Proof.find({ artist: req.user.id })
-      .sort({ createdAt: -1 })
-      .populate('track', 'title duration');
-
+      .sort({ createdAt: -1 });
+    
+    console.log("Found proofs in database:", proofs.length);
+    
     return res.success({
       count: proofs.length,
-      proofs
+      proofs: proofs
     });
   } catch (error) {
-    console.error('Erreur lors de la récupération des preuves:', error);
-    return res.error('Erreur serveur lors de la récupération des preuves', 500);
+    console.error('Error retrieving proofs:', error);
+    return res.error('Server error while retrieving proofs', 500);
   }
 };
 

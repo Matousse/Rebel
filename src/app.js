@@ -60,6 +60,7 @@ app.get('/api/status', (req, res) => {
 // Ajouter les routes API pour proofs
 app.use('/api/proofs', proofRoutes);
 
+
 // Account Abstraction Status route
 app.get('/api/aa-status', (req, res) => {
   try {
