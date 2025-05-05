@@ -36,8 +36,42 @@ app.use(responseMiddleware);
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
+// Sert explicitement le fichier sonicMapData.json à la racine
+app.use('/sonicMapData.json', express.static(path.join(__dirname, '../public/sonicMapData.json')));
+
 // Serve Play module static files
 app.use('/play', express.static(path.join(__dirname, 'modules/play')));
+
+// Autoriser l'affichage de /sonic-map en iframe depuis localhost:3000
+app.use('/sonic-map', (req, res, next) => {
+  res.setHeader('X-Frame-Options', 'ALLOW-FROM http://localhost:3000');
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+  res.setHeader('Content-Security-Policy',
+    "frame-ancestors 'self' http://localhost:3000;"
+  );
+  next();
+});
+// Helmet CSP spécifique pour la Sonic-map
+app.use('/sonic-map', require('helmet')({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.babylonjs.com'
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https://assets.babylonjs.com"],
+      connectSrc: ["'self'", 'https://cdn.babylonjs.com'],
+      fontSrc: ["'self'", "https://cdn.babylonjs.com"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'self'", 'http://localhost:3000']
+    }
+  }
+}));
+// Serve Sonic-map static files
+app.use('/sonic-map', express.static(path.join(__dirname, '../public/sonic-map')));
 
 // API Routes
 app.use('/api/users', userRoutes);

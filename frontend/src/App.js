@@ -3,6 +3,7 @@ import { Magic } from 'magic-sdk'; // Import Magic SDK
 import { OAuthExtension } from '@magic-ext/oauth';
 import FeedPage from './pages/FeedPage';
 import TrackProofButton from './components/TrackProofButton';
+import SonicMapPage from './pages/SonicMapPage';
 
 // Icons
 import { Music, Upload, Shield, User, LogOut, LogIn, Award, HelpCircle, Home } from 'lucide-react';
@@ -165,6 +166,8 @@ function App() {
           );
       case 'help':
         return <HelpPage onBack={() => setCurrentPage('home')} />;
+      case 'sonic-map':
+        return <SonicMapPage />;
       default:
         return <HomePage user={user} navigateTo={setCurrentPage} />;
     }
@@ -184,11 +187,17 @@ function App() {
               Home
             </button>
             <button 
-  onClick={() => setCurrentPage('feed')}
-  className="text-gray-300 hover:text-white"
->
-  Feed
-</button>
+              onClick={() => setCurrentPage('feed')}
+              className="text-gray-300 hover:text-white"
+            >
+              Feed
+            </button>
+            <button 
+              onClick={() => setCurrentPage('sonic-map')}
+              className="text-gray-300 hover:text-white"
+            >
+              Sonic-map
+            </button>
             {user ? (
               <>
                 <button 
