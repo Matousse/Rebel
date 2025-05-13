@@ -25,7 +25,11 @@ function App() {
         // Initialize Magic with your publishable key
         // Make sure to install magic-sdk via npm first
         const magic = new Magic('pk_live_DAE97419AE6EBC48', {
-          extensions: []
+          extensions: [],
+          network: 'mainnet',
+          locale: 'en_US',
+          // Ajouter le domaine shonen.app aux domaines autorisés
+          redirectURI: 'https://www.shonen.app/rebel'
         });
         setMagicSDK(magic);
         
@@ -419,7 +423,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
       const didToken = await magicSDK.user.getIdToken();
       
       // Send to backend for verification and get JWT
-      const response = await fetch('http://localhost:5001/api/magic/auth', {
+      const response = await fetch('/rebel/api/magic/auth', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

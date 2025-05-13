@@ -1,4 +1,8 @@
-const API_BASE_URL = 'http://localhost:5001';
+// Déterminer l'URL de base de l'API en fonction de l'environnement
+const API_BASE_URL = '/rebel/api';
+
+// Pour le développement local, décommenter la ligne ci-dessous
+// const API_BASE_URL = 'http://localhost:5001';
 
 /**
  * Base API service for making requests to the backend

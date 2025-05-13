@@ -36,8 +36,19 @@ app.use(responseMiddleware);
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
+// Serve frontend static files
+app.use('/frontend', express.static(path.join(__dirname, '../public/frontend')));
+
+// Route pour le frontend (SPA)
+app.get('/frontend/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/frontend/index.html'));
+});
+
 // Sert explicitement le fichier sonicMapData.json à la racine
 app.use('/sonicMapData.json', express.static(path.join(__dirname, '../public/sonicMapData.json')));
+
+// Serve frontend static files
+app.use('/frontend', express.static(path.join(__dirname, '../public/frontend')));
 
 // Serve Play module static files
 app.use('/play', express.static(path.join(__dirname, 'modules/play')));
