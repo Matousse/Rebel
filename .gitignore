@@ -7,14 +7,8 @@ package-lock.json
 yarn.lock
 
 # Environnement
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 
 # Fichiers de build
-/dist
 /build
 
 # Fichiers d'upload
