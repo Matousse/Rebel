@@ -52,6 +52,27 @@ exports.uploadTrack = async (req, res) => {
   }
 };
 
+// In trackController.js
+exports.getTracks = async (req, res) => {
+  try {
+    const tracks = await Track.find({ isPublic: true }).populate('artist', 'username profilePicture');
+    res.success({ tracks }, 'Tracks retrieved successfully');
+  } catch (error) {
+    console.error('Error retrieving tracks:', error);
+    res.error('Server error while retrieving tracks', 500);
+  }
+};
+
+exports.getUserTracks = async (req, res) => {
+  try {
+    const tracks = await Track.find({ artist: req.user.id }).sort('-createdAt');
+    res.success(tracks, 'User tracks retrieved successfully');
+  } catch (error) {
+    console.error('Error retrieving user tracks:', error);
+    res.error('Server error while retrieving user tracks', 500);
+  }
+};
+
 // @desc    Generate blockchain proof for track
 // @route   POST /api/tracks/:id/proof
 // @access  Private

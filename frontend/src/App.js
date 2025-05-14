@@ -1,4 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { Magic } from 'magic-sdk'; // Import Magic SDK
+import { OAuthExtension } from '@magic-ext/oauth';
+import FeedPage from './pages/FeedPage';
+import TrackProofButton from './components/TrackProofButton';
+import SonicMapPage from './pages/SonicMapPage';
 
 // Icons
 import { Music, Upload, Shield, User, LogOut, LogIn, Award, HelpCircle, Home } from 'lucide-react';
@@ -13,47 +18,55 @@ function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [error, setError] = useState('');
 
-  // Initialiser Magic SDK et vérifier l'état de l'utilisateur
+  // Initialize Magic SDK and check user state
   useEffect(() => {
     const initMagic = async () => {
       try {
-        // En production, utilisez une variable d'environnement
-        const magic = new window.Magic('pk_live_DAE97419AE6EBC48');
+        // Initialize Magic with your publishable key
+        // Make sure to install magic-sdk via npm first
+        const magic = new Magic('pk_live_DAE97419AE6EBC48', {
+          extensions: []
+        });
         setMagicSDK(magic);
         
-        // Vérifier si l'utilisateur est connecté
+        // Check if user is logged in
         const isLoggedIn = await magic.user.isLoggedIn();
         
         if (isLoggedIn) {
-          const userMetadata = await magic.user.getMetadata();
-          const token = localStorage.getItem('token');
-          
-          if (token) {
-            // Récupérer le profil utilisateur depuis l'API
-            try {
-              const response = await fetch('http://localhost:5001/api/users/profile', {
-                headers: {
-                  'Authorization': `Bearer ${token}`
+          // Get user metadata from Magic
+          try {
+            const metadata = await magic.user.getInfo();
+            const token = localStorage.getItem('token');
+            
+            if (token) {
+              // Fetch user profile from API
+              try {
+                const response = await fetch('http://localhost:5001/api/users/profile', {
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                
+                if (response.ok) {
+                  const userData = await response.json();
+                  if (userData.success) {
+                    setUser({
+                      ...userData.data,
+                      token
+                    });
+                    console.log('User authenticated:', userData.data);
+                  }
+                } else {
+                  // Invalid token, remove it
+                  localStorage.removeItem('token');
                 }
-              });
-              
-              if (response.ok) {
-                const userData = await response.json();
-                if (userData.success) {
-                  setUser({
-                    ...userData.data,
-                    token
-                  });
-                  console.log('User authenticated:', userData.data);
-                }
-              } else {
-                // Token invalide, le supprimer
+              } catch (error) {
+                console.error('Error fetching user profile:', error);
                 localStorage.removeItem('token');
               }
-            } catch (error) {
-              console.error('Error fetching user profile:', error);
-              localStorage.removeItem('token');
             }
+          } catch (metadataError) {
+            console.error('Error getting user metadata:', metadataError);
           }
         }
       } catch (error) {
@@ -67,7 +80,7 @@ function App() {
     initMagic();
   }, []);
 
-  // Se déconnecter
+  // Logout user
   const handleLogout = async () => {
     if (magicSDK) {
       try {
@@ -82,7 +95,7 @@ function App() {
     }
   };
 
-  // Fonction pour afficher la page actuelle
+  // Render current page
   const renderPage = () => {
     switch(currentPage) {
       case 'login':
@@ -125,19 +138,36 @@ function App() {
             navigateTo={setCurrentPage}
           />
         );
-      case 'proofs':
-        return user ? (
-          <ProofsPage user={user} onBack={() => setCurrentPage('home')} />
-        ) : (
-          <LoginPage 
-            onBack={() => setCurrentPage('home')} 
-            magicSDK={magicSDK} 
-            setUser={setUser} 
-            navigateTo={setCurrentPage}
-          />
-        );
+        case 'proofs':
+      return user ? (
+        <ProofsPage 
+          user={user} 
+          onBack={() => setCurrentPage('home')} 
+          navigateTo={setCurrentPage}
+        />
+      ) : (
+        <LoginPage 
+          onBack={() => setCurrentPage('home')} 
+          magicSDK={magicSDK} 
+          setUser={setUser} 
+          navigateTo={setCurrentPage}
+        />
+      );
+        case 'feed':
+          return user ? (
+            <FeedPage user={user} navigateTo={setCurrentPage} />
+          ) : (
+            <LoginPage 
+              onBack={() => setCurrentPage('home')} 
+              magicSDK={magicSDK} 
+              setUser={setUser} 
+              navigateTo={setCurrentPage}
+            />
+          );
       case 'help':
         return <HelpPage onBack={() => setCurrentPage('home')} />;
+      case 'sonic-map':
+        return <SonicMapPage />;
       default:
         return <HomePage user={user} navigateTo={setCurrentPage} />;
     }
@@ -145,7 +175,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header avec navigation */}
+      {/* Header with navigation */}
       <header className="bg-gray-800 p-4">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold text-violet-500">REBEL</h1>
@@ -155,6 +185,18 @@ function App() {
               className="text-gray-300 hover:text-white"
             >
               Home
+            </button>
+            <button 
+              onClick={() => setCurrentPage('feed')}
+              className="text-gray-300 hover:text-white"
+            >
+              Feed
+            </button>
+            <button 
+              onClick={() => setCurrentPage('sonic-map')}
+              className="text-gray-300 hover:text-white"
+            >
+              Sonic-map
             </button>
             {user ? (
               <>
@@ -212,7 +254,7 @@ function App() {
         )}
       </main>
 
-      {/* Messages d'erreur */}
+      {/* Error messages */}
       {error && (
         <div className="fixed top-4 right-4 bg-red-900 text-white p-4 rounded-lg shadow-lg">
           {error}
@@ -227,119 +269,125 @@ function App() {
     </div>
   );
 }
-
-// Page d'accueil
+// HomePage component
 function HomePage({ user, navigateTo }) {
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="text-center mb-12">
-        <h1 className="text-5xl font-bold text-violet-500 mb-4">REBEL</h1>
-        <p className="text-xl text-gray-300">Anti-Algorithm Music Hub</p>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Our Vision</h2>
-          <p className="text-gray-300 mb-4">
-            REBEL is the definitive anti-algorithmic sanctuary for underground music, 
-            where human curation trumps AI recommendations, restoring cultural value and 
-            financial sustainability to authentic electronic and experimental music scenes.
-          </p>
-          <p className="text-gray-300">
-            We rebuild the discovery-to-monetization pipeline through a decentralized ecosystem 
-            where fans, DJs, and micro-labels connect directly, underpinned by transparent Web3 
-            infrastructure.
-          </p>
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold text-violet-500 mb-4">REBEL</h1>
+          <p className="text-xl text-gray-300">Anti-Algorithm Music Hub</p>
+        </div>
+        <button 
+  onClick={() => navigateTo('feed')}
+  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+>
+  <Home size={16} className="mr-2" />
+  <span>Explore the Feed</span>
+</button>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+          <div className="bg-gray-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Our Vision</h2>
+            <p className="text-gray-300 mb-4">
+              REBEL is the definitive anti-algorithmic sanctuary for underground music, 
+              where human curation trumps AI recommendations, restoring cultural value and 
+              financial sustainability to authentic electronic and experimental music scenes.
+            </p>
+            <p className="text-gray-300">
+              We rebuild the discovery-to-monetization pipeline through a decentralized ecosystem 
+              where fans, DJs, and micro-labels connect directly, underpinned by transparent Web3 
+              infrastructure.
+            </p>
+          </div>
+          
+          <div className="bg-gray-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Get Started</h2>
+            {user ? (
+              <div>
+                <p className="text-gray-300 mb-4">
+                  Welcome, <span className="text-violet-400">{user.username || user.email}</span>!
+                </p>
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => navigateTo('upload')}
+                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <Upload size={16} className="mr-2" />
+                    <span>Upload a new track</span>
+                  </button>
+                  <button 
+                    onClick={() => navigateTo('tracks')}
+                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <Music size={16} className="mr-2" />
+                    <span>Manage your tracks</span>
+                  </button>
+                  <button 
+                    onClick={() => navigateTo('proofs')}
+                    className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <Shield size={16} className="mr-2" />
+                    <span>View your ownership proofs</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-gray-300 mb-4">
+                  Join the community and start sharing your music with true ownership.
+                </p>
+                <button 
+                  onClick={() => navigateTo('login')}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center">
+                    <LogIn size={16} className="mr-2" />
+                    <span>Login with Magic Link</span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Get Started</h2>
-          {user ? (
-            <div>
-              <p className="text-gray-300 mb-4">
-                Welcome, <span className="text-violet-400">{user.username || user.email}</span>!
-              </p>
-              <div className="space-y-3">
-                <button 
-                  onClick={() => navigateTo('upload')}
-                  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  <Upload size={16} className="mr-2" />
-                  <span>Upload a new track</span>
-                </button>
-                <button 
-                  onClick={() => navigateTo('tracks')}
-                  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  <Music size={16} className="mr-2" />
-                  <span>Manage your tracks</span>
-                </button>
-                <button 
-                  onClick={() => navigateTo('proofs')}
-                  className="flex items-center text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  <Shield size={16} className="mr-2" />
-                  <span>View your ownership proofs</span>
-                </button>
+          <h2 className="text-xl font-semibold mb-4 text-center">Core Features</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Music size={24} className="text-violet-400" />
               </div>
+              <h3 className="font-medium mb-2">Sonic Map</h3>
+              <p className="text-sm text-gray-400">Visual interface representing music by sonic characteristics</p>
             </div>
-          ) : (
-            <div>
-              <p className="text-gray-300 mb-4">
-                Join the community and start sharing your music with true ownership.
-              </p>
-              <button 
-                onClick={() => navigateTo('login')}
-                className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-              >
-                <div className="flex items-center">
-                  <LogIn size={16} className="mr-2" />
-                  <span>Login with Magic Link</span>
-                </div>
-              </button>
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Upload size={24} className="text-violet-400" />
+              </div>
+              <h3 className="font-medium mb-2">P2P Sharing</h3>
+              <p className="text-sm text-gray-400">Decentralized exchange for rare tracks with provenance verification</p>
             </div>
-          )}
-        </div>
-      </div>
-      
-      <div className="bg-gray-800 p-6 rounded-lg">
-        <h2 className="text-xl font-semibold mb-4 text-center">Core Features</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Music size={24} className="text-violet-400" />
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Award size={24} className="text-violet-400" />
+              </div>
+              <h3 className="font-medium mb-2">Live Crates</h3>
+              <p className="text-sm text-gray-400">Time-limited thematic challenges with community voting</p>
             </div>
-            <h3 className="font-medium mb-2">Sonic Map</h3>
-            <p className="text-sm text-gray-400">Visual interface representing music by sonic characteristics</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Upload size={24} className="text-violet-400" />
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
+                <Shield size={24} className="text-violet-400" />
+              </div>
+              <h3 className="font-medium mb-2">Proof of Creation</h3>
+              <p className="text-sm text-gray-400">Blockchain-based timestamp proof for your creative work</p>
             </div>
-            <h3 className="font-medium mb-2">P2P Sharing</h3>
-            <p className="text-sm text-gray-400">Decentralized exchange for rare tracks with provenance verification</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Award size={24} className="text-violet-400" />
-            </div>
-            <h3 className="font-medium mb-2">Live Crates</h3>
-            <p className="text-sm text-gray-400">Time-limited thematic challenges with community voting</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="w-12 h-12 rounded-full bg-violet-600/20 flex items-center justify-center mb-3">
-              <Shield size={24} className="text-violet-400" />
-            </div>
-            <h3 className="font-medium mb-2">Proof of Creation</h3>
-            <p className="text-sm text-gray-400">Blockchain-based timestamp proof for your creative work</p>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-// Page de Login
+// Login Page
 function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -349,7 +397,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isArtist, setIsArtist] = useState(false);
 
-  // Connexion avec Magic Link
+  // Login with Magic Link
   const handleMagicLogin = async (e) => {
     e.preventDefault();
     
@@ -366,11 +414,11 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
         throw new Error('Authentication system not initialized');
       }
       
-      // Obtenir le DID token de Magic
+      // Get DID token from Magic
       await magicSDK.auth.loginWithMagicLink({ email });
       const didToken = await magicSDK.user.getIdToken();
       
-      // Envoyer au backend pour vérification et obtenir un JWT
+      // Send to backend for verification and get JWT
       const response = await fetch('http://localhost:5001/api/magic/auth', {
         method: 'POST',
         headers: {
@@ -402,7 +450,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     }
   };
   
-  // Connexion traditionnelle avec email/password
+  // Traditional login with email/password
   const handleTraditionalLogin = async (e) => {
     e.preventDefault();
     
@@ -415,7 +463,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      // Connexion via méthode JWT traditionnelle
+      // Login via traditional JWT method
       const response = await fetch('http://localhost:5001/api/users/login', {
         method: 'POST',
         headers: {
@@ -443,7 +491,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     }
   };
   
-  // Inscription traditionnelle
+  // Traditional signup
   const handleSignUp = async (e) => {
     e.preventDefault();
     
@@ -456,7 +504,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
     setError('');
     
     try {
-      // Inscription via méthode traditionnelle
+      // Sign up via traditional method
       const response = await fetch('http://localhost:5001/api/users/register', {
         method: 'POST',
         headers: {
@@ -503,7 +551,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
         )}
         
         {isSignUp ? (
-          // Formulaire d'inscription
+          // Sign up form
           <form onSubmit={handleSignUp}>
             <div className="mb-4">
               <label className="block text-gray-300 mb-2">Email</label>
@@ -575,7 +623,7 @@ function LoginPage({ onBack, magicSDK, setUser, navigateTo }) {
             </div>
           </form>
         ) : (
-          // Formulaire de connexion
+          // Login form
           <div>
             <div className="mb-6">
               <button 
@@ -971,259 +1019,98 @@ function ProfilePage({ user, setUser, onBack }) {
 }
 
 // Page Tracks
-function TracksPage({ user, onBack }) {
-  const [tracks, setTracks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchTracks();
-  }, []);
-
-  const fetchTracks = async () => {
-    try {
-      const response = await fetch('http://localhost:5001/api/tracks', {
-        headers: {
-          'Authorization': `Bearer ${user.token}`
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setTracks(data.data);
+function TracksPage({ user, onBack, navigateTo }) {
+    const [tracks, setTracks] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(false); // For proof creation
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [activeTrackId, setActiveTrackId] = useState(null); // Track which proof is being created
+  
+    useEffect(() => {
+      fetchTracks();
+    }, []);
+  
+    const fetchTracks = async () => {
+      try {
+        const response = await fetch('http://localhost:5001/api/tracks/user', {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setTracks(Array.isArray(data.data) ? data.data : data.data.tracks || []);
+          } else {
+            setError(data.message || 'Failed to fetch tracks');
+          }
         } else {
-          setError(data.message || 'Failed to fetch tracks');
+          setError('Failed to fetch tracks');
         }
-      } else {
-        setError('Failed to fetch tracks');
+      } catch (error) {
+        console.error('Error fetching tracks:', error);
+        setError(error.message || 'Failed to fetch tracks');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching tracks:', error);
-      setError(error.message || 'Failed to fetch tracks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-violet-500">My Tracks</h1>
-        <button
-          onClick={() => window.location.href = '/api/upload'}
-          className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center"
-        >
-          <Upload size={18} className="mr-2" />
-          Upload New Track
-        </button>
-      </div>
+    };
+    
+  
+    const handleCreateProof = async (trackId, e) => {
+      // Prevent any default browser behavior
+      if (e) e.preventDefault();
       
-      {error && (
-        <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
+      // Set the active track ID to show loading state on the specific button
+      setActiveTrackId(trackId);
+      setIsLoading(true);
+      setError('');
+      setSuccess('');
       
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-12 h-12 border-4 border-dashed rounded-full animate-spin border-violet-600"></div>
-        </div>
-      ) : tracks.length > 0 ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {tracks.map(track => (
-            <div key={track._id} className="bg-gray-800 rounded-lg overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-start">
-                  <div className="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center mr-4 flex-shrink-0">
-                    <Music size={20} className="text-violet-400" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-medium text-lg">{track.title}</h3>
-                    <p className="text-gray-400 text-sm">
-                      {track.genre} • {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
-                    </p>
-                    <p className="text-gray-500 text-sm mt-1">
-                      Uploaded {new Date(track.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-                
-                {track.description && (
-                  <p className="text-gray-300 mt-3 text-sm">{track.description}</p>
-                )}
-                
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {track.tags && track.tags.map(tag => (
-                    <span key={tag} className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-center text-gray-400 text-sm">
-                    <span className="mr-4">{track.plays || 0} plays</span>
-                  </div>
-                  
-                  <div className="flex space-x-2">
-                    <a 
-                      href={`http://localhost:5001/uploads/tracks/${track.audioFile}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-1 px-3 rounded transition-colors"
-                    >
-                      Play
-                    </a>
-                    <button 
-                      onClick={() => window.location.href = `/tracks/${track._id}/proof`}
-                      className="bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 text-sm font-medium py-1 px-3 rounded transition-colors flex items-center"
-                    >
-                      <Shield size={14} className="mr-1" />
-                      Create Proof
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="bg-gray-800 rounded-lg p-8 text-center">
-          <Music size={48} className="text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-medium mb-2">No tracks yet</h3>
-          <p className="text-gray-400 mb-6">
-            You haven't uploaded any tracks yet. Upload your first track to get started.
-          </p>
+      try {
+        console.log(`Creating proof for track: ${trackId}`);
+        
+        const response = await fetch(`http://localhost:5001/api/tracks/${trackId}/proof`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${user.token}`,
+            'Content-Type': 'application/json'
+          },
+          // No body needed for this request
+        });
+        
+        const data = await response.json();
+        console.log('Proof creation response:', data);
+        
+        if (data.success) {
+          setSuccess(`Proof created successfully for track: ${trackId}`);
+          // Don't navigate away - stay on the current page
+        } else {
+          setError(data.message || 'Failed to create proof');
+        }
+      } catch (error) {
+        console.error('Error creating proof:', error);
+        setError(error.message || 'Failed to create proof');
+      } finally {
+        setIsLoading(false);
+        setActiveTrackId(null);
+      }
+    };
+  
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-violet-500">My Tracks</h1>
           <button
-            onClick={() => window.location.href = '/upload'}
-            className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors inline-flex items-center"
+            onClick={() => navigateTo('upload')}
+            className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center"
           >
             <Upload size={18} className="mr-2" />
-            Upload First Track
+            Upload New Track
           </button>
         </div>
-      )}
-      
-      <div className="mt-6">
-        <button
-          onClick={onBack}
-          className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-        >
-          Back
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Upload Page
-function UploadPage({ user, onBack }) {
-  const [formData, setFormData] = useState({
-    title: '',
-    genre: '',
-    description: '',
-    tags: '',
-    isPublic: true
-  });
-  const [audioFile, setAudioFile] = useState(null);
-  const [coverImage, setCoverImage] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  // Vérifier que l'utilisateur est un artiste
-  useEffect(() => {
-    if (!user.isArtist) {
-      setError('You need to be registered as an artist to upload tracks.');
-    }
-  }, [user.isArtist]);
-
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  };
-
-  const handleAudioFileChange = (e) => {
-    setAudioFile(e.target.files[0]);
-  };
-
-  const handleCoverImageChange = (e) => {
-    setCoverImage(e.target.files[0]);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!audioFile) {
-      setError('Please select an audio file');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError('');
-    setSuccess('');
-    
-    try {
-      const uploadData = new FormData();
-      Object.entries(formData).forEach(([key, value]) => {
-        uploadData.append(key, value);
-      });
-      
-      // Convertir la chaîne de tags en array
-      if (formData.tags) {
-        uploadData.delete('tags');
-        formData.tags.split(',').forEach(tag => {
-          uploadData.append('tags', tag.trim());
-        });
-      }
-      
-      uploadData.append('audioFile', audioFile);
-      
-      if (coverImage) {
-        uploadData.append('coverImage', coverImage);
-      }
-      
-      const response = await fetch('http://localhost:5001/api/tracks', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${user.token}`
-        },
-        body: uploadData
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setSuccess('Track uploaded successfully!');
-        setFormData({
-          title: '',
-          genre: '',
-          description: '',
-          tags: '',
-          isPublic: true
-        });
-        setAudioFile(null);
-        setCoverImage(null);
-      } else {
-        throw new Error(data.message || 'Failed to upload track');
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      setError(error.message || 'Failed to upload track. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6 text-violet-500">Upload Track</h1>
-      
-      <div className="bg-gray-800 rounded-lg p-6">
+        
         {error && (
           <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
             {error}
@@ -1236,150 +1123,390 @@ function UploadPage({ user, onBack }) {
           </div>
         )}
         
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Title *</label>
-            <input
-              type="text"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-              required
-            />
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-12 h-12 border-4 border-dashed rounded-full animate-spin border-violet-600"></div>
           </div>
-          
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Genre *</label>
-            <input
-              type="text"
-              name="genre"
-              value={formData.genre}
-              onChange={handleChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-              required
-            />
+        ) : tracks.length > 0 ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {tracks.map(track => (
+              <div key={track._id} className="bg-gray-800 rounded-lg overflow-hidden">
+                <div className="p-6">
+                  <div className="flex items-start">
+                    <div className="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center mr-4 flex-shrink-0">
+                      <Music size={20} className="text-violet-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-lg">{track.title}</h3>
+                      <p className="text-gray-400 text-sm">
+                        {track.genre} • {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
+                      </p>
+                      <p className="text-gray-500 text-sm mt-1">
+                        Uploaded {new Date(track.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {track.description && (
+                    <p className="text-gray-300 mt-3 text-sm">{track.description}</p>
+                  )}
+                  
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {track.tags && track.tags.map(tag => (
+                      <span key={tag} className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center text-gray-400 text-sm">
+                      <span className="mr-4">{track.plays || 0} plays</span>
+                    </div>
+                    
+                    <div className="flex space-x-2">
+                      <a 
+                        href={`http://localhost:5001/uploads/tracks/${track.audioFile}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-1 px-3 rounded transition-colors"
+                      >
+                        Play
+                      </a>
+                      <TrackProofButton 
+                      trackId={track._id}
+                      user={user}
+                      onSuccess={(proofData) => {
+                        setSuccess(`Proof created successfully for track: ${track._id}`);
+                      }}
+/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Description</label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 h-32"
-            ></textarea>
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Tags (comma separated)</label>
-            <input
-              type="text"
-              name="tags"
-              value={formData.tags}
-              onChange={handleChange}
-              placeholder="electronic, ambient, experimental"
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">Audio File *</label>
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={handleAudioFileChange}
-              className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
-              required
-            />
-            <p className="mt-1 text-gray-500 text-xs">
-              Supported formats: MP3, WAV, FLAC, OGG (max 30MB)
+        ) : (
+          <div className="bg-gray-800 rounded-lg p-8 text-center">
+            <Music size={48} className="text-gray-600 mx-auto mb-4" />
+            <h3 className="text-xl font-medium mb-2">No tracks yet</h3>
+            <p className="text-gray-400 mb-6">
+              You haven't uploaded any tracks yet. Upload your first track to get started.
             </p>
-          </div>
-          
-          <div className="mb-6">
-            <label className="block text-gray-300 mb-2">Cover Image (optional)</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleCoverImageChange}
-              className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
-            />
-            <p className="mt-1 text-gray-500 text-xs">
-              Recommended: 800x800 JPG or PNG (max 2MB)
-            </p>
-          </div>
-          
-          <div className="mb-6">
-            <label className="flex items-center">
-              <input 
-                type="checkbox"
-                name="isPublic"
-                checked={formData.isPublic}
-                onChange={handleChange}
-                className="rounded border-gray-600 text-violet-600 focus:ring-violet-500 h-4 w-4 bg-gray-700"
-              />
-              <span className="ml-2 text-gray-300">Make this track public</span>
-            </label>
-          </div>
-          
-          <div className="flex space-x-4">
             <button
-              type="submit"
-              disabled={isLoading || !user.isArtist}
-              className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+              onClick={() => navigateTo('upload')}
+              className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors inline-flex items-center"
             >
-              {isLoading ? 'Uploading...' : 'Upload Track'}
-            </button>
-            <button
-              type="button"
-              onClick={onBack}
-              className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              Back
+              <Upload size={18} className="mr-2" />
+              Upload First Track
             </button>
           </div>
-        </form>
+        )}
+        
+        <div className="mt-6">
+          <button
+            onClick={onBack}
+            className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            Back
+          </button>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+
+// Upload Page
+function UploadPage({ user, onBack }) {
+    const [formData, setFormData] = useState({
+      title: '',
+      genre: '',
+      description: '',
+      tags: '',
+      isPublic: true
+    });
+    const [audioFile, setAudioFile] = useState(null);
+    const [coverImage, setCoverImage] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+  
+    // Check that user is an artist
+    useEffect(() => {
+      if (!user.isArtist) {
+        setError('You need to be registered as an artist to upload tracks.');
+      }
+    }, [user.isArtist]);
+  
+    const handleChange = (e) => {
+      const { name, value, type, checked } = e.target;
+      setFormData(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      }));
+    };
+  
+    const handleAudioFileChange = (e) => {
+      setAudioFile(e.target.files[0]);
+    };
+  
+    const handleCoverImageChange = (e) => {
+      setCoverImage(e.target.files[0]);
+    };
+  
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      
+      if (!audioFile) {
+        setError('Please select an audio file');
+        return;
+      }
+      
+      setIsLoading(true);
+      setError('');
+      setSuccess('');
+      
+      try {
+        const uploadData = new FormData();
+        
+        // Add form data fields
+        uploadData.append('title', formData.title);
+        uploadData.append('genre', formData.genre);
+        uploadData.append('description', formData.description);
+        uploadData.append('isPublic', formData.isPublic);
+        
+        // Convert tags string to array and add them properly
+        if (formData.tags) {
+          const tagsArray = formData.tags.split(',').map(tag => tag.trim());
+          uploadData.append('tags', tagsArray.join(','));
+        }
+        
+        // Add files
+        uploadData.append('audioFile', audioFile);
+        
+        if (coverImage) {
+          uploadData.append('coverImage', coverImage);
+        }
+        
+        console.log('Uploading track with data:', {
+          title: formData.title,
+          genre: formData.genre,
+          hasAudioFile: !!audioFile,
+          hasCoverImage: !!coverImage
+        });
+        
+        const response = await fetch('http://localhost:5001/api/tracks', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+            // Don't set Content-Type with FormData - it will be set automatically
+          },
+          body: uploadData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          setSuccess('Track uploaded successfully!');
+          setFormData({
+            title: '',
+            genre: '',
+            description: '',
+            tags: '',
+            isPublic: true
+          });
+          setAudioFile(null);
+          setCoverImage(null);
+        } else {
+          throw new Error(data.message || 'Failed to upload track');
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        setError(error.message || 'Failed to upload track. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+  
+    return (
+      <div>
+        <h1 className="text-3xl font-bold mb-6 text-violet-500">Upload Track</h1>
+        
+        <div className="bg-gray-800 rounded-lg p-6">
+          {error && (
+            <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
+              {error}
+            </div>
+          )}
+          
+          {success && (
+            <div className="bg-green-900/50 border border-green-500 text-green-300 px-4 py-3 rounded mb-4">
+              {success}
+            </div>
+          )}
+          
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Title *</label>
+              <input
+                type="text"
+                name="title"
+                value={formData.title}
+                onChange={handleChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                required
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Genre *</label>
+              <input
+                type="text"
+                name="genre"
+                value={formData.genre}
+                onChange={handleChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                required
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Description</label>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 h-32"
+              ></textarea>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Tags (comma separated)</label>
+              <input
+                type="text"
+                name="tags"
+                value={formData.tags}
+                onChange={handleChange}
+                placeholder="electronic, ambient, experimental"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Audio File *</label>
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={handleAudioFileChange}
+                className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
+                required
+              />
+              <p className="mt-1 text-gray-500 text-xs">
+                Supported formats: MP3, WAV, FLAC, OGG (max 30MB)
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-gray-300 mb-2">Cover Image (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleCoverImageChange}
+                className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-700"
+              />
+              <p className="mt-1 text-gray-500 text-xs">
+                Recommended: 800x800 JPG or PNG (max 2MB)
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <label className="flex items-center">
+                <input 
+                  type="checkbox"
+                  name="isPublic"
+                  checked={formData.isPublic}
+                  onChange={handleChange}
+                  className="rounded border-gray-600 text-violet-600 focus:ring-violet-500 h-4 w-4 bg-gray-700"
+                />
+                <span className="ml-2 text-gray-300">Make this track public</span>
+              </label>
+            </div>
+            
+            <div className="flex space-x-4">
+              <button
+                type="submit"
+                disabled={isLoading || !user.isArtist}
+                className="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isLoading ? 'Uploading...' : 'Upload Track'}
+              </button>
+              <button
+                type="button"
+                onClick={onBack}
+                className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+              >
+                Back
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
 // Proofs Page
 function ProofsPage({ user, onBack }) {
-    const [proofs, setProofs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-  
-    useEffect(() => {
-      fetchProofs();
-    }, []);
-  
-    const fetchProofs = async () => {
-      try {
-        const response = await fetch('http://localhost:5001/api/proofs/user/me', {
-          headers: {
-            'Authorization': `Bearer ${user.token}`
-          }
-        });
+  const [proofs, setProofs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchProofs();
+  }, []);
+
+  const fetchProofs = async () => {
+    try {
+      console.log("Attempting to fetch proofs with token:", user.token ? "Token exists" : "No token");
+      
+      const response = await fetch('http://localhost:5001/api/proofs/user/me', {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+      
+      console.log("Proofs API response status:", response.status);
+      console.log("Current user ID:", user._id || user.id);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Proofs data:", data);
         
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setProofs(data.data.proofs || []);
+        // In your fetchProofs function:
+        if (data.success) {
+          console.log("Complete data structure:", data);
+          
+          // Check the structure of data.data
+          if (data.data && data.data.proofs) {
+            setProofs(data.data.proofs);
+            console.log("Found proofs:", data.data.proofs.length);
+          } else if (data.data && Array.isArray(data.data)) {
+            // In case proofs are directly in data.data as an array
+            setProofs(data.data);
+            console.log("Found proofs (direct array):", data.data.length);
           } else {
-            setError(data.message || 'Failed to fetch proofs');
+            console.error("Unexpected data structure:", data.data);
+            setProofs([]);
           }
         } else {
-          setError('Failed to fetch proofs');
+          setError(data.message || 'Failed to fetch proofs');
         }
-      } catch (error) {
-        console.error('Error fetching proofs:', error);
-        setError(error.message || 'Failed to fetch proofs');
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching proofs (details):', error);
+      setError(error.message || 'Failed to fetch proofs');
+    } finally {
+      setLoading(false);
+    }
+  };
   
     const payForProof = async (proofId) => {
       try {

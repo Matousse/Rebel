@@ -47,7 +47,7 @@ router.post(
   upload.single('audioFile'),
   proofController.createProof
 );
-
+router.get('/user/me', protect, proofController.getMyProofs);
 // Récupération d'une preuve par ID
 router.get('/:id', proofController.getProofById);
 

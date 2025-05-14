@@ -7,7 +7,9 @@ const { protect, artistOnly } = require('../../middleware/authMiddleware');
 const {
   uploadTrack,
   createProof,
-  getProof
+  getProof,
+  getTracks,
+  getUserTracks
 } = require('./trackController');
 
 // Configuration multer pour les uploads audio
@@ -44,5 +46,7 @@ const upload = multer({
 router.post('/', protect, artistOnly, upload.single('audioFile'), uploadTrack);
 router.post('/:id/proof', protect, createProof);
 router.get('/:id/proof', protect, getProof);
+router.get('/', getTracks); // Use the imported function directly
+router.get('/user', protect, getUserTracks); // Use the imported function directly and add protect middleware
 
 module.exports = router;
