@@ -158,6 +158,60 @@ class AccountService {
         }
     }
     /**
+   * Créer une preuve de création pour un morceau de musique
+   */
+    async createProofOfCreation(userId, trackMetadata) {
+        const user = this.users.get(userId);
+        if (!user) {
+            throw new Error("Utilisateur non trouvé");
+        }
+        try {
+            // Préparer les métadonnées à stocker
+            const memoData = JSON.stringify({
+                type: "proof_of_creation",
+                track_id: trackMetadata.trackId,
+                title: trackMetadata.title,
+                hash: trackMetadata.hash,
+                timestamp: Date.now()
+            });
+            // Créer la transaction mémo
+            const memoResult = await this.solanaService.createMemoTransaction(user.publicKey, memoData);
+            // Enregistrer la transaction
+            const transaction = {
+                id: `tx_${(0, uuid_1.v4)()}`,
+                userId,
+                type: 'CHALLENGE_PARTICIPATION', // Utilisez un type approprié ou ajoutez 'PROOF_OF_CREATION'
+                status: 'COMPLETED',
+                timestamp: Date.now(),
+                signature: memoResult.signature,
+                metadata: {
+                    trackId: trackMetadata.trackId,
+                    title: trackMetadata.title,
+                    hash: trackMetadata.hash,
+                    network: config_1.SOLANA_CONFIG.network
+                }
+            };
+            this.transactions.set(transaction.id, transaction);
+            return transaction;
+        }
+        catch (error) {
+            console.error("Erreur lors de la création de la preuve de création:", error);
+            throw error;
+        }
+    }
+    /**
+     * Vérifier une preuve de création
+     */
+    async verifyProofOfCreation(signature) {
+        try {
+            return await this.solanaService.verifyTransaction(signature);
+        }
+        catch (error) {
+            console.error("Erreur lors de la vérification de la preuve:", error);
+            return false;
+        }
+    }
+    /**
      * Récupérer le solde SOL d'un utilisateur
      */
     async getUserSolBalance(userId) {

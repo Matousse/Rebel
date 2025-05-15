@@ -49,6 +49,18 @@ export declare class AccountService {
      */
     logoutUser(userId: string): Promise<boolean>;
     /**
+   * Créer une preuve de création pour un morceau de musique
+   */
+    createProofOfCreation(userId: string, trackMetadata: {
+        trackId: string;
+        title: string;
+        hash: string;
+    }): Promise<Transaction>;
+    /**
+     * Vérifier une preuve de création
+     */
+    verifyProofOfCreation(signature: string): Promise<boolean>;
+    /**
      * Récupérer le solde SOL d'un utilisateur
      */
     getUserSolBalance(userId: string): Promise<number>;

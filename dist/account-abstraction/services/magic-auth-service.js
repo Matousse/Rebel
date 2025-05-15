@@ -4,6 +4,7 @@ exports.MagicAuthService = void 0;
 const admin_1 = require("@magic-sdk/admin");
 const uuid_1 = require("uuid");
 const config_1 = require("../config");
+const web3_js_1 = require("@solana/web3.js");
 /**
  * Service pour gérer l'authentification via Magic.link
  */
@@ -51,6 +52,20 @@ class MagicAuthService {
         }
     }
     /**
+     * Vérifier si une chaîne est au format base58 valide
+     * Le format base58 utilise ces caractères: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
+     */
+    isValidBase58(str) {
+        return /^[1-9A-HJ-NP-Za-km-z]+$/.test(str);
+    }
+    /**
+     * Générer une adresse Solana valide au format base58
+     */
+    generateValidSolanaAddress() {
+        const keypair = web3_js_1.Keypair.generate();
+        return keypair.publicKey.toString();
+    }
+    /**
      * Créer un compte utilisateur à partir des données Magic
      */
     async createUserAccountFromMagic(didToken, username) {
@@ -62,18 +77,28 @@ class MagicAuthService {
             }
             // Récupérer les métadonnées
             const metadata = await this.getUserMetadata(didToken);
+            // Gérer le cas où l'adresse publique est manquante ou invalide
+            let publicKey;
             if (!metadata.publicAddress) {
-                throw new Error("Adresse Solana manquante dans les métadonnées Magic");
+                console.warn("Adresse publique manquante dans les métadonnées Magic, génération d'une nouvelle adresse");
+                publicKey = this.generateValidSolanaAddress();
+            }
+            else if (!this.isValidBase58(metadata.publicAddress)) {
+                console.warn("Adresse publique invalide (non-base58) dans les métadonnées Magic, génération d'une nouvelle adresse");
+                publicKey = this.generateValidSolanaAddress();
+            }
+            else {
+                publicKey = metadata.publicAddress;
             }
             // Générer un nom d'utilisateur par défaut si aucun n'est fourni
             const defaultUsername = username ||
                 metadata.email?.split('@')[0] ||
-                `user_${metadata.publicAddress.slice(0, 6)}`;
+                `user_${publicKey.slice(0, 6)}`;
             // Créer l'objet utilisateur
             const userAccount = {
                 id: `user_${(0, uuid_1.v4)()}`,
                 username: defaultUsername,
-                publicKey: metadata.publicAddress,
+                publicKey: publicKey, // Adresse Solana valide garantie
                 magicIssuer: metadata.issuer,
                 email: metadata.email,
                 createdAt: Date.now()

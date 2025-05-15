@@ -18,6 +18,15 @@ export declare class MagicAuthService {
         publicAddress?: string;
     }>;
     /**
+     * Vérifier si une chaîne est au format base58 valide
+     * Le format base58 utilise ces caractères: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
+     */
+    private isValidBase58;
+    /**
+     * Générer une adresse Solana valide au format base58
+     */
+    private generateValidSolanaAddress;
+    /**
      * Créer un compte utilisateur à partir des données Magic
      */
     createUserAccountFromMagic(didToken: string, username?: string): Promise<UserAccount>;

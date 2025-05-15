@@ -7,6 +7,7 @@ package-lock.json
 yarn.lock
 
 # Environnement
+.env
 
 # Fichiers de build
 /build

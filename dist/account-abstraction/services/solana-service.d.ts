@@ -39,5 +39,11 @@ export declare class SolanaService {
      * Vérifier si une transaction existe et a été confirmée
      */
     verifyTransaction(signature: string): Promise<boolean>;
+    /**
+   * Créer une transaction mémo pour stocker des données sur la blockchain
+   */
+    createMemoTransaction(address: string | PublicKey, memoText: string): Promise<{
+        signature: string;
+    }>;
 }
 export {};
