@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { createAnchorClient } = require('../../utils/anchorClient');
+const User = require('../user/userModel');
 
 // Initialiser le client Anchor
 let anchorClient;
@@ -248,28 +249,6 @@ exports.getProofsByArtistId = async (req, res) => {
   }
 };
 
-// @desc    Obtenir les preuves de l'utilisateur connecté
-// @route   GET /api/proofs/user/me
-// @access  Private
-// In your proofController.js
-exports.getMyProofs = async (req, res) => {
-  try {
-    console.log("Looking for proofs for user ID:", req.user.id);
-    
-    const proofs = await Proof.find({ artist: req.user.id })
-      .sort({ createdAt: -1 });
-    
-    console.log("Found proofs in database:", proofs.length);
-    
-    return res.success({
-      count: proofs.length,
-      proofs: proofs
-    });
-  } catch (error) {
-    console.error('Error retrieving proofs:', error);
-    return res.error('Server error while retrieving proofs', 500);
-  }
-};
 
 // @desc    Vérifier une preuve
 // @route   POST /api/proofs/verify/:id
@@ -508,43 +487,185 @@ exports.payForProof = async (req, res) => {
   }
 };
 
-// @desc    Télécharger le document de preuve
+// @desc    Obtenir les preuves de l'utilisateur connecté
+// @route   GET /api/proofs/user/me
+// @access  Private
+exports.getMyProofs = async (req, res) => {
+  try {
+    console.log("=== RÉCUPÉRATION PREUVES UTILISATEUR ===");
+    console.log("User ID:", req.user.id);
+    
+    // Récupérer l'utilisateur SANS populate d'abord
+    const user = await User.findById(req.user.id);
+    
+    if (!user || !user.proofs || user.proofs.length === 0) {
+      console.log("No proofs found for user");
+      return res.success({
+        proofs: [],
+        count: 0
+      });
+    }
+    
+    console.log("Found proofs in user.proofs:", user.proofs.length);
+    
+    // Importer Track pour les requêtes manuelles
+    const Track = require('../../models/Track');
+    const mongoose = require('mongoose');
+    const formattedProofs = [];
+    
+    // Traiter chaque preuve individuellement
+    for (let index = 0; index < user.proofs.length; index++) {
+      const proof = user.proofs[index];
+      
+      // Extraire l'ID du track de façon ultra-sécurisée
+      let trackId = null;
+      
+      if (proof.trackId) {
+        // Forcer conversion en string propre
+        trackId = proof.trackId.toString().trim();
+        
+        // Vérifier si c'est un ObjectId valide
+        if (mongoose.Types.ObjectId.isValid(trackId)) {
+          try {
+            // Récupérer le track manuellement
+            const track = await Track.findById(trackId);
+            
+            if (track) {
+              // Créer un ID sécurisé pour le front
+              const secureId = `${user._id.toString()}_${trackId}_${index}`;
+              
+              const formattedProof = {
+                _id: secureId, // ID totalement sûr
+                proofId: `proof_${trackId}_${proof.timestamp}`,
+                title: track.title,
+                contentHash: proof.signature || 'N/A',
+                status: proof.signature ? 'CONFIRMED' : 'PENDING',
+                createdAt: track.createdAt,
+                version: 1,
+                track: {
+                  _id: track._id.toString(),
+                  title: track.title,
+                  genre: track.genre,
+                  duration: track.duration
+                },
+                artist: user._id,
+                payment: {
+                  isPaid: true,
+                  paymentMethod: 'FREE',
+                  cost: 0
+                },
+                blockchain: {
+                  transactionId: proof.transactionId,
+                  signature: proof.signature,
+                  timestamp: proof.timestamp,
+                  network: 'devnet'
+                }
+              };
+              
+              formattedProofs.push(formattedProof);
+              console.log(`✅ Added proof ${index}: track ${trackId}`);
+            } else {
+              console.log(`❌ Track not found for proof ${index}: ${trackId}`);
+            }
+          } catch (trackError) {
+            console.log(`❌ Error fetching track for proof ${index}:`, trackError.message);
+          }
+        } else {
+          console.log(`❌ Invalid trackId for proof ${index}: ${trackId}`);
+        }
+      } else {
+        console.log(`❌ No trackId for proof ${index}`);
+      }
+    }
+    
+    console.log("Total valid formatted proofs:", formattedProofs.length);
+    
+    return res.success({
+      proofs: formattedProofs,
+      count: formattedProofs.length
+    });
+  } catch (error) {
+    console.error('Error retrieving proofs:', error);
+    return res.error('Server error while retrieving proofs', 500);
+  }
+};
+
+// @desc    Télécharger le document de preuve  
 // @route   GET /api/proofs/download/:id
 // @access  Private
 exports.downloadProof = async (req, res) => {
   try {
-    const proof = await Proof.findById(req.params.id)
-      .populate('track', 'title')
-      .populate('artist', 'username');
-
+    const proofId = decodeURIComponent(req.params.id);
+    console.log("Download request for:", proofId);
+    
+    // Format attendu: userId_trackId_index
+    const parts = proofId.split('_');
+    
+    if (parts.length < 3) {
+      return res.error('Invalid proof ID format', 400);
+    }
+    
+    const [userId, trackId, indexStr] = parts;
+    const proofIndex = parseInt(indexStr);
+    
+    console.log('Parsed:', { userId, trackId, proofIndex });
+    
+    // Vérifications de base
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(trackId)) {
+      return res.error('Invalid ID format', 400);
+    }
+    
+    if (userId !== req.user.id) {
+      return res.error('Not authorized', 403);
+    }
+    
+    // Récupérer directement
+    const user = await User.findById(userId);
+    const Track = require('../../models/Track');
+    const track = await Track.findById(trackId);
+    
+    if (!user || !track) {
+      return res.error('User or track not found', 404);
+    }
+    
+    // Trouver la preuve
+    const proof = user.proofs.find(p => 
+      p.trackId && p.trackId.toString() === trackId
+    );
+    
     if (!proof) {
-      return res.error('Preuve non trouvée', 404);
+      return res.error('Proof not found', 404);
     }
-
-    // Vérifier si la preuve est payée
-    if (!proof.payment?.isPaid) {
-      return res.error('Cette preuve n\'a pas encore été payée', 400);
-    }
-
-    // En production, exiger que la preuve soit confirmée sur la blockchain
-    if (process.env.NODE_ENV === 'production' && 
-        (proof.status !== 'CONFIRMED' || !proof.blockchain?.pdaAddress)) {
-      return res.error('Cette preuve n\'est pas encore confirmée sur la blockchain', 400);
-    }
-
-    // Vérifier si l'utilisateur est autorisé à télécharger la preuve
-    // Seul le créateur de la preuve ou un administrateur peut la télécharger
-    if (proof.artist._id.toString() !== req.user.id && !req.user.isAdmin) {
-      return res.error('Vous n\'êtes pas autorisé à télécharger cette preuve', 403);
-    }
-
-    // Générer un document de preuve au format JSON
-    const proofDocument = proof.toProofJson();
-
-    // Au lieu de générer un vrai PDF, on renvoie simplement les données JSON
-    return res.success(proofDocument, 'Document de preuve généré avec succès');
+    
+    // Document simple
+    const proofDocument = {
+      format: 'Rebellion Proof of Creation v1.0',
+      proofId: `proof_${trackId}_${proof.timestamp}`,
+      track: {
+        title: track.title,
+        artist: user.username,
+        genre: track.genre,
+        duration: track.duration
+      },
+      proof: {
+        timestamp: proof.timestamp,
+        signature: proof.signature,
+        transactionId: proof.transactionId,
+        verified: !!proof.signature
+      },
+      blockchain: {
+        network: 'devnet',
+        explorer: proof.transactionId ? 
+          `https://explorer.solana.com/tx/${proof.transactionId}?cluster=devnet` : null
+      },
+      generated: new Date().toISOString()
+    };
+    
+    return res.success(proofDocument, 'Proof generated successfully');
+    
   } catch (error) {
-    console.error('Erreur lors de la génération du document de preuve:', error);
-    return res.error('Erreur serveur lors de la génération du document de preuve', 500);
+    console.error('Download error:', error);
+    return res.error('Server error', 500);
   }
 };
