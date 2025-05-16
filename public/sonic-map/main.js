@@ -5,6 +5,8 @@ import '@babylonjs/loaders';
 const canvas = document.getElementById('renderCanvas');
 const engine = new Engine(canvas, true);
 let scene;
+import spotifyPlayer from './spotifyPlayer.js';
+let currentPlayingSphere = null;
 
 async function createScene() {
   scene = new Scene(engine);
@@ -69,12 +71,32 @@ async function createScene() {
     console.log('Aucune sphère trouvée, caméra au centre.');
   }
 
+  // Affiche l'étiquette d'aide Spotify au démarrage
+  setTimeout(() => {
+    const help = document.getElementById('spotifyHelpLabel');
+    if (help) help.style.display = 'block';
+  }, 400);
+
+  let hasPlayedSpotify = false;
+
+  // Notification bulle moderne
+  window.showNotification = function(msg) {
+    const notif = document.getElementById('spotifyBubbleNotif');
+    if (!notif) return;
+    notif.textContent = msg;
+    notif.classList.add('active');
+    setTimeout(() => {
+      notif.classList.remove('active');
+    }, 2600);
+  };
+
   // Message d'aide pour activer les contrôles
   setTimeout(() => {
-    alert('Clique sur le canvas pour activer les contrôles FPS et explorer l\'univers !');
+    const help = document.getElementById('spotifyHelpLabel');
+    if (help) help.style.display = 'block';
   }, 500);
-
-  // Glow pour les sphères liked
+  
+  // Fonction pour ajouter l'effet d'aurore aux sphères
   function addAuroraEffect(mesh, scene) {
     // Particules "aurore boréale" oniriques
     const ps = new ParticleSystem("aurora", 400, scene);
@@ -102,6 +124,9 @@ async function createScene() {
     ps.start();
     mesh.aurora = ps;
   }
+    ps.start();
+    mesh.aurora = ps;
+  }
 
   // Détection de proximité et affichage panneau info
   const infoPanel = document.getElementById('infoPanel');
@@ -126,6 +151,9 @@ async function createScene() {
   });
 
   function showInfo(song) {
+  if (currentPlayingSphere && currentPlayingSphere.metadata === song) {
+    infoPanel.innerHTML += `<br><span style='color:#1db954;font-weight:bold'>▶️ Lecture en cours</span>`;
+  }
     infoPanel.innerHTML = `<b>${song.title}</b> <span style="color:#6ef">${song.artist}</span><br>
       <i>${song.genre}${song.subgenreOf ? ' ('+song.subgenreOf+')' : ''}</i> &bull; ${song.year}<br>
       <small>BPM: ${song.audio.tempo.toFixed(1)}<br>
@@ -142,10 +170,34 @@ async function createScene() {
 
   // Système de viseur et tir (clic ou espace)
   window.addEventListener('pointerdown', tryLike);
-  window.addEventListener('keydown', e => {
+  window.addEventListener('keydown', async e => {
     if (e.code === 'Space') {
       e.preventDefault(); // Empêche le scroll de la fenêtre
       tryLike();
+    }
+    if (e.key === 'p' || e.key === 'P') {
+      // Raycast du viseur
+      const pick = scene.pick(canvas.width/2, canvas.height/2);
+      if (pick && pick.pickedMesh && spheres.includes(pick.pickedMesh)) {
+        const song = pick.pickedMesh.metadata;
+        const ok = await spotifyPlayer.playTrack(song.id);
+        if (ok) {
+          hasPlayedSpotify = true;
+          // Masque l'étiquette d'aide
+          const help = document.getElementById('spotifyHelpLabel');
+          if (help) help.style.display = 'none';
+          showNotification(`<b>${song.title}</b> a été jouée ! 🎶`);
+          if (currentPlayingSphere && currentPlayingSphere !== pick.pickedMesh) {
+            currentPlayingSphere.renderOverlay = false;
+          }
+          currentPlayingSphere = pick.pickedMesh;
+          currentPlayingSphere.renderOverlay = true;
+        } else {
+          showNotification('Erreur de lecture Spotify.<br>Vérifie ton compte premium.');
+        }
+      } else {
+        showNotification('Vise une sphère pour lancer la lecture Spotify.');
+      }
     }
   });
 
@@ -169,8 +221,17 @@ async function createScene() {
     // UI
     if (lastHovered === sphere) showInfo(song);
   }
-}
+
 
 createScene();
-engine.runRenderLoop(() => { scene && scene.render(); });
+engine.runRenderLoop(() => {
+  if (scene) {
+    scene.render();
+    // Affiche un overlay sur la sphère en cours de lecture
+    if (currentPlayingSphere) {
+      const overlayMat = currentPlayingSphere.material;
+      overlayMat.emissiveColor = overlayMat.diffuseColor.scale(currentPlayingSphere.metadata.emissiveIntensity + 2.5);
+    }
+  }
+});
 window.addEventListener('resize', () => engine.resize());
