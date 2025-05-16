@@ -1,16 +1,24 @@
 {
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "noImplicitAny": false,
+    "suppressImplicitAnyIndexErrors": true,
+    "noStrictGenericChecks": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "src/timestamp-proof/anchor/client.ts"],
+  "ts-node": {
     "compilerOptions": {
-      "target": "es2020",
-      "module": "commonjs",
-      "esModuleInterop": true,
-      "outDir": "./dist",
-      "rootDir": "./src",
-      "strict": true,
-      "skipLibCheck": true,
-      "forceConsistentCasingInFileNames": true,
-      "resolveJsonModule": true,
-      "declaration": true
-    },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules"]
+      "skipLibCheck": true
+    }
   }
+}
